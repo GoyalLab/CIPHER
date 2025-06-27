@@ -1,0 +1,6 @@
+.conda
+.ipynb_checkpoints
+.h5ad
+.tmp
+__pycache__
+data
