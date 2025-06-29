@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 from scipy.stats import ks_2samp
 from scipy.stats import wilcoxon
+import pickle
 
 from src.preprocess import get_data
 
@@ -180,33 +181,38 @@ def compute_average_response(X0, X1):
     return X1.mean(axis=0) - X0.mean(axis=0)
 
 def compute_predicted_response(Sigma, delta_X, gene_idx, epsilon=1e-8):
-    sigma_col = Sigma[:, gene_idx]
+    #sigma_col = Sigma[:, gene_idx]
+    sigma_col = Sigma['PIP'][gene_idx]
     u_opt = np.dot(sigma_col, delta_X) / (np.dot(sigma_col, sigma_col) + epsilon)
     pred = u_opt * sigma_col
     return pred, u_opt
 
-def plot_best_r2_perturbation(dataset_names, cov_dir="covariance_outputs", r2_dir="r2_error_analysis", plot_dir="dx_plots"):
+def plot_best_r2_perturbation(dataset_names, data_dir="data", cov_dir="covariance_outputs", r2_dir="r2_error_analysis", plot_dir="dx_plots"):
     os.makedirs(plot_dir, exist_ok=True)
 
     for base_name in dataset_names:
-        r2_path = os.path.join(r2_dir, f"{base_name}_r2_bootstrap_results.csv")
+        r2_path = os.path.join(r2_dir, f"{base_name}_results.csv")
         if not os.path.exists(r2_path):
             print(f"R² CSV not found for {base_name}, skipping")
             continue
 
         df = pd.read_csv(r2_path)
-        if df.empty or "perturbation" not in df or "R2_bootstrap" not in df:
+        if df.empty or "perturbation" not in df or "R2_real" not in df:
             print(f"Invalid or missing data for {base_name}, skipping")
             continue
 
-        best_row = df.loc[df["R2_bootstrap"].idxmax()]
+        best_row = df.loc[df["R2_real"].idxmax()]
         best_pert = best_row["perturbation"]
 
-        print(f"{base_name}: highest R² = {best_row['R2_bootstrap']:.3f} for {best_pert}")
+        print(f"{base_name}: highest R² = {best_row['R2_real']:.3f} for {best_pert}")
 
-        # Load data
-        adata, X0, _ = get_data(0, f"{base_name}.h5ad")
-        Sigma = np.load(os.path.join(cov_dir, f"{base_name}_Sigma.npy"))
+        # Load sigma
+        with open(os.path.join(cov_dir, f"{base_name}_usamples_with_lr.pkl"), "rb") as s:
+            Sigma = pickle.load(s)
+        # Load adata
+        adata_p = os.path.join(data_dir, f"{base_name}.h5ad")
+        adata, X0, _ = get_data(0, adata_p)
+        
         gene_names = np.array(adata.var_names)
 
         if best_pert not in gene_names:
@@ -234,7 +240,7 @@ def plot_best_r2_perturbation(dataset_names, cov_dir="covariance_outputs", r2_di
         
         plt.xlabel("Gene Index", fontsize=14)
         plt.ylabel("ΔX", fontsize=14)
-        plt.title(f"Best Perturbation: {best_pert} ({base_name}, R² = {best_row['R2_bootstrap']:.3f})", fontsize=16)
+        plt.title(f"Best Perturbation: {best_pert} ({base_name}, R² = {best_row['R2_real']:.3f})", fontsize=16)
         plt.legend(fontsize=11)
         plt.tight_layout()
         plt.savefig(os.path.join(plot_dir, f"{base_name}_dX_lines_dots.svg"))

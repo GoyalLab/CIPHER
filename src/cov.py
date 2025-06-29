@@ -303,9 +303,8 @@ def save_u_samples_summary(data_path, output_dir="u_samples_summaries", mode="u_
     with open(save_path, "wb") as f:
         pickle.dump(summary_df, f)
 
-    print(f"✅ Saved u-sample summary to: {save_path}")
+    print(f"Saved u-sample summary to: {save_path}")
     return summary_df
-
 
 def load_u_samples_summary(filepath):
     with open(filepath, "rb") as f:
