@@ -31,6 +31,20 @@ full_analysis_with_nulls_soft_and_plots(adata_path, save_dir=output_dir)
 ## Reproduce paper figures
 Notebooks to reproduce each figure of the paper can be found in the notebooks directory.
 All notebooks work with the supplied conda environment.
+Notebook figures:
+---
+notebooks/LR_fig2.ipynb
+- Fig. 2 (All)
+notebooks/LR_fig3_R2_hist.ipynb
+- Fig. 3 (A-M)
+notebooks/LF_double_pert_R2_and_inference.ipynb
+- Fig. 3 (N, O, P)
+- Fig. 4 H
+notebooks/LR_fig3_cross_dataset.ipynb
+- Fig. 3 Q, R
+notebooks/LR_fig4.ipynb
+- Fig. 4 (A-G)
+
 
 ## License
 
