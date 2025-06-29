@@ -18,15 +18,19 @@ bash .init_conda.sh
 mamba activate .conda/cipher
 ```
 
-## Usage
+## Usage of CIPHER module
 
 ```python
 from src.r2 import full_analysis_with_nulls_soft_and_plots
-# Example usage
+# Example usage of CIPHER module
 adata_path = 'path/to/your/perturb-seq-adata.h5ad'
 output_dir = 'path/to/output_dir'
 full_analysis_with_nulls_soft_and_plots(adata_path, save_dir=output_dir)
 ```
+
+## Reproduce paper figures
+Notebooks to reproduce each figure of the paper can be found in the notebooks directory.
+All notebooks work with the supplied conda environment.
 
 ## License
 
