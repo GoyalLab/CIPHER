@@ -44,6 +44,9 @@ notebooks/LR_fig3_cross_dataset.ipynb
 - Fig. 3 Q, R
 notebooks/LR_fig4.ipynb
 - Fig. 4 (A-G)
+notebooks/LR_fig5_TRADE_and_EGENES.ipynb
+- Fig. 5
+
 
 
 ## License
