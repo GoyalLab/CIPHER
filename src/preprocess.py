@@ -54,7 +54,7 @@ def compute_sparsity(X, label=''):
     total = np.prod(X.shape)
     zeros = np.sum(X == 0)
     sparsity = zeros / total
-    print(f"{label} sparsity: {sparsity:.2%} ({zeros} of {total} zero entries)")
+    logging.info(f"{label} sparsity: {sparsity:.2%} ({zeros} of {total} zero entries)")
     return sparsity
 
 def _perturbation_columns() -> set[str]:
@@ -63,7 +63,7 @@ def _perturbation_columns() -> set[str]:
 def _control_keys() -> set[str]:
     return set(['control', 'NT', 'non-targeting', 'ctrl'])
 
-def get_data(selected_pert_index, data_path, expression_threshold=1., min_samples=100, qc=False):
+def get_data(selected_pert_index, data_path, expression_threshold=1., min_samples=100, qc=False, save=True):
     logging.info(f'Reading dataset: {data_path}')
     adata = ad.read_h5ad(data_path)
 
@@ -116,7 +116,8 @@ def get_data(selected_pert_index, data_path, expression_threshold=1., min_sample
     perturbations = adata.obs['perturbation'].unique()
     selected_pert_name = perturbations[selected_pert_index]
     genes = adata.var_names.tolist()
-    np.save('perturbations.npy', perturbations)
+    if save:
+        np.save('perturbations.npy', perturbations)
 
     print(f"{len(perturbations)} perturbations")
     print(f"{len(genes)} genes after filtering")
