@@ -29,9 +29,12 @@ full_analysis_with_nulls_soft_and_plots(adata_path, save_dir=output_dir)
 ```
 
 ## Reproduce paper figures
+**Notebooks**
+
 Notebooks to reproduce each figure of the paper can be found in the notebooks directory.
 All notebooks work with the supplied conda environment.
-Notebook figures:
+
+**Notebook figures:**
 ---
 notebooks/LR_fig2.ipynb
 - Fig. 2 (All)
@@ -47,6 +50,12 @@ notebooks/LR_fig4.ipynb
 notebooks/LR_fig5_TRADE_and_EGENES.ipynb
 - Fig. 5
 
+## Source datasets
+**Link to google drive with source data**
+https://drive.google.com/drive/folders/1HYEDb_7tbaO0XvQ_36t2WuA2vgYp3YX5
+
+**Method benchmarks**
+Benchmarking notebooks can be found in the benchmarks/ folder
 
 
 ## License

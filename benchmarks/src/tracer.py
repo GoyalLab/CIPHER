@@ -128,7 +128,7 @@ class TraceData:
                     sstat_trace_f = os.path.join(full_split_dir, 'traces', f'{method}.csv')
                     # Read memory trace of split
                     if os.path.exists(sstat_trace_f):
-                        logging.info(f'\t - Collecting trace {i} for method {method}')
+                        logging.info(f'\t > Collecting trace {i} for method {method}')
                         trace_data = self.reader_cls(sstat_trace_f).data
                         trace_data['split_idx'] = i
                         trace_data['split'] = f'split_{i}'

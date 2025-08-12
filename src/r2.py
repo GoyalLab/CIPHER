@@ -42,27 +42,27 @@ def compute_soft_fraction(Sigma, u, threshold_mode='fraction_variance', threshol
     f_soft = np.sum(c2[soft_indices]) / np.sum(c2)
     return f_soft, soft_indices
 
-def r2_score_standart(y: np.ndarray, y_hat: np.ndarray, eps: float = 1e-8) -> np.ndarray:
-    """Calculate R2 coefficient for y (truth) vs. y^ (prediction)"""
-    ss_res = np.sum((y - y_hat) ** 2)
-    ss_tot = np.sum((y - np.mean(y)) ** 2)
+def r2_score_standard(y: np.ndarray, y_hat: np.ndarray, eps: float = 1e-8) -> float:
+    """Calculate R2 coefficient for y (truth) vs. y^ (prediction)."""
     valid = np.abs(y) > 0
     if not np.any(valid):
         return np.nan
-    return 1 - ss_res[valid] / (ss_tot[valid] + eps)
-
-def r2_score(y: np.ndarray, x: np.ndarray, eps: float = 1e-8) -> np.ndarray:
-    """Calculate R2 coefficient for x (truth) vs. y^ (prediction)"""
-    valid = np.abs(x) > 0
-    if not np.any(valid):
-        return np.nan
-    ss_res = np.sqrt(np.sum((y[valid] - x[valid]) ** 2))
-    ss_tot = np.sqrt(np.sum(x[valid] ** 2))
+    ss_res = np.sum((y[valid] - y_hat[valid]) ** 2)
+    ss_tot = np.sum((y[valid] - np.mean(y[valid])) ** 2)
     return 1 - ss_res / (ss_tot + eps)
 
-def run(data_path, save_dir="r2_histograms"):
+def r2_score(y: np.ndarray, x: np.ndarray, eps: float = 1e-8) -> np.ndarray:
+    """Calculate R2 coefficient for y (truth) vs. x (prediction)"""
+    valid = np.abs(y) > 0
+    if not np.any(valid):
+        return np.nan
+    ss_res = np.sum((x[valid] - y[valid]) ** 2)
+    ss_tot = np.sum(y[valid] ** 2)
+    return 1 - ss_res / (ss_tot + eps)
+
+def run_r2(data_path: str, save_dir: str, qc: bool = False):
     # Read adata to file
-    adata, X0, _ = get_data(0, data_path, qc=True, save=False)
+    adata, X0, _ = get_data(0, data_path, qc=qc, save=False)
     gene_names = np.array(adata.var_names.tolist())
     X0_dense = X0.toarray() if issparse(X0) else X0
     # Compute average
@@ -84,47 +84,42 @@ def run(data_path, save_dir="r2_histograms"):
  
     perturbations = [p for p in adata.obs['perturbation'].unique() if p != 'control']
 
-    R2_real, R2_null, R2_rand = [], [], []
-    f_soft_scores = []
+    R2_real, R2_null, R2_rand, R2_x1 = [], [], [], []
     pert_names = []
-    # Pre-compute arrays and avoid repeated computations
-    valid_perts = [p for p in perturbations if p in gene_names]
-    gene_indices = np.array([np.where(gene_names == p)[0][0] for p in valid_perts])
-    
-    # Vectorize perturbation response calculation
-    X1_means = np.vstack([
-        adata[adata.obs['perturbation'] == p].X.mean(axis=0).A1 
-        if issparse(adata[adata.obs['perturbation'] == p].X) 
-        else adata[adata.obs['perturbation'] == p].X.mean(axis=0) 
-        for p in valid_perts
-    ])
-    delta_X_matrix = (X1_means - X0_mean).T
-    # Calculate valid deltas
-    valid_mask = (np.abs(delta_X_matrix) > 0).T * 1
-    delta_X_matrix *= valid_mask
 
-    # Vectorized R2 calculation
-    def predict_r2_batch(Sigma, gene_indices, delta_X_matrix, eps=1e-8):
-        sigma_cols = Sigma[:, gene_indices]
-        u_opts = np.sum(sigma_cols @ delta_X_matrix.T, axis=1) / (
-            np.sum(sigma_cols @ sigma_cols, axis=0) + eps
-        )
-        preds = u_opts[:, None] * sigma_cols
-        preds *= valid_mask
-        r2 = 1 - np.sum((delta_X_matrix - preds)**2, axis=0) / (np.sum(delta_X_matrix**2, axis=0)+1e-8)
-        return r2
+    for pert in tqdm(perturbations, desc="Calculating R2s"):
+        # Skip perturbations that are not in features of adata
+        if pert not in gene_names:
+            continue
+        # Subset perturbation data
+        gene_idx = np.where(gene_names == pert)[0][0]
+        X1 = adata[adata.obs['perturbation'] == pert].X
+        X1 = X1.toarray() if issparse(X1) else X1
+        y = X1.mean(axis=0)
+        # Get average perturbation response to control
+        delta_X = y - X0_mean
 
-    # Calculate all R2 scores at once
-    R2_real.extend(predict_r2_batch(Sigma_real, gene_indices, delta_X_matrix))
-    R2_null.extend(predict_r2_batch(Sigma_null, gene_indices, delta_X_matrix))
-    R2_rand.extend(predict_r2_batch(Sigma_rand, gene_indices, delta_X_matrix))
-    
-    # Calculate f_soft scores
-    f_soft_scores.extend([
-        compute_soft_fraction(Sigma_real, Sigma_real[:, idx])[0] 
-        for idx in gene_indices
-    ])
-    pert_names.extend(valid_perts)
+        def predict_r2(Sigma, eps: float = 1e-8, return_pred: bool = False):
+            sigma_col = Sigma[:, gene_idx]
+            u_opt = np.dot(sigma_col, delta_X) / (np.dot(sigma_col, sigma_col) + eps)
+            pred = u_opt * sigma_col
+            valid = np.abs(delta_X) > 0
+            if not np.any(valid):
+                return np.nan
+            r2 = 1.0 - np.sum((delta_X[valid] - pred[valid])**2) / (np.sum(delta_X[valid]**2) + eps)
+            if return_pred:
+                return pred, r2
+            else:
+                return r2
+        
+        # Predict R2 for every Sigma
+        prediction, real_r2 = predict_r2(Sigma_real, return_pred=True)
+        R2_real.append(real_r2)
+        R2_null.append(predict_r2(Sigma_null))
+        R2_rand.append(predict_r2(Sigma_rand))
+        R2_x1.append(r2_score_standard(y, prediction))
+        pert_names.append(pert)
+
     os.makedirs(save_dir, exist_ok=True)
     base_name = os.path.basename(data_path).replace('.h5ad', '').replace('.pkl', '')
 
@@ -143,23 +138,12 @@ def run(data_path, save_dir="r2_histograms"):
     plt.savefig(os.path.join(save_dir, f"{base_name}_r2_histogram.svg"))
     plt.close()
 
-    # f_soft histogram
-    plt.figure(figsize=(8, 6))
-    plt.hist(f_soft_scores, bins=30, alpha=0.8, density=True)
-    plt.xlabel("f_soft", fontsize=18)
-    plt.ylabel("Density", fontsize=18)
-    plt.title(f"f_soft Distribution: {base_name}", fontsize=20)
-    plt.grid(True)
-    plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, f"{base_name}_fsoft_histogram.svg"))
-    plt.close()
-
     df = pd.DataFrame({
         "perturbation": pert_names,
         "R2_real": R2_real,
         "R2_null": R2_null,
         "R2_rand": R2_rand,
-        "f_soft": f_soft_scores
+        "R2_x1": R2_x1,
     })
     df.to_csv(os.path.join(save_dir, f"{base_name}_results.csv"), index=False)
 
@@ -209,7 +193,10 @@ def full_analysis_with_nulls_soft_and_plots(data_path, save_dir="r2_histograms")
             sigma_col = Sigma[:, gene_idx]
             u_opt = np.dot(sigma_col, delta_X) / (np.dot(sigma_col, sigma_col) + eps)
             pred = u_opt * sigma_col
-            return r2_score(sigma_col, pred, eps=eps)
+            valid = np.abs(delta_X) > 0
+            if not np.any(valid):
+                return np.nan
+            return 1.0 - np.sum((delta_X[valid] - pred[valid])**2) / (np.sum(delta_X[valid]**2) + eps)
         
         # Predict R2 for every Sigma
         R2_real.append(predict_r2(Sigma_real))

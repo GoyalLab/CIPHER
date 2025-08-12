@@ -10,7 +10,7 @@ logging.basicConfig(
 from src.preprocess import get_data
 
 
-def split_data(adata_p: str, data_dir: str, n_splits: int = 10, seed: int = 0, out_file_name: str = 'perturb_processed.h5ad', dry: bool = False) -> None:
+def split_data(adata_p: str, data_dir: str, n_splits: int = 10, seed: int = 0, out_file_name: str = 'perturb_processed.h5ad', qc: bool = False, dry: bool = False) -> pd.DataFrame:
     # I/O
     ds_name = os.path.basename(adata_p).replace('.h5ad', '')        # Dataset name
     # Base output directory
@@ -19,7 +19,7 @@ def split_data(adata_p: str, data_dir: str, n_splits: int = 10, seed: int = 0, o
     summary_f = os.path.join(output_dir, 'adata_summary.csv')
     # Set seed for reproducibilty
     np.random.seed(seed)
-    adata, _, _ = get_data(0, adata_p, qc=True, save=False)
+    adata, _, _ = get_data(0, adata_p, qc=qc, save=False)
     # Split dataset by perturbations and number of cells
     cpp = adata.obs.perturbation.value_counts()
     # Choose perturbations without control (is always included)
@@ -42,6 +42,7 @@ def split_data(adata_p: str, data_dir: str, n_splits: int = 10, seed: int = 0, o
         o = os.path.join(split_dir, out_file_name)
         # Subset to perturbations in current split
         c_mask = (adata.obs.perturbation.isin(s))
+        n_cells = c_mask.sum()
         # Add previous split
         if prev_mask is None:
             prev_mask = c_mask
@@ -52,14 +53,15 @@ def split_data(adata_p: str, data_dir: str, n_splits: int = 10, seed: int = 0, o
         mask = c_mask | (ctrl_mask)
         # Subset adata to total mask
         tmp = adata[mask]
-        logging.info(f'Creating split {split_dir} with shape: {tmp.shape} and #perturbations: {tmp.obs.perturbation.nunique()}')
+        logging.info(f'Creating split {i} with shape: {tmp.shape} and #perturbations: {tmp.obs.perturbation.nunique()}')
         # Add split summary to overall data summary
-        adata_split_sumamry = pd.DataFrame({'split': f'split_{i}', 'n_obs': adata.n_obs, 'n_perts': adata.obs.perturbation.nunique()})
-        adata_summary.append(adata_split_sumamry)
+        adata_split_summary = {'split': f'split_{i}', 'n_obs': tmp.n_obs, 'n_perts': tmp.obs.perturbation.nunique(), 'n_new_cells': n_cells}
+        adata_summary.append(adata_split_summary)
         if not dry:
             # Write split to file with compression to reduce disk usage
             tmp.copy().write_h5ad(o, compression='gzip')
     # Combine summary
-    adata_summary = pd.concat(adata_summary, axis=0)
+    adata_summary = pd.DataFrame(adata_summary)
     if not dry:
         adata_summary.to_csv(summary_f)
+    return adata_summary

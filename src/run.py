@@ -1,7 +1,7 @@
 import os
 import argparse
 
-from src.r2 import full_analysis_with_nulls_soft_and_plots
+from src.r2 import run_r2
 
 import logging
 logging.basicConfig(
@@ -24,7 +24,7 @@ def run_cipher(params) -> None:
     o = os.path.join(out_dir, 'cipher')
     os.makedirs(o, exist_ok=True)
     # Usage of CIPHER module
-    _ = full_analysis_with_nulls_soft_and_plots(adata_p, save_dir=o)
+    _ = run_r2(adata_p, save_dir=o)
 
 
 if __name__ == '__main__':
