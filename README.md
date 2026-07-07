@@ -2,61 +2,245 @@
 
 **Covariance Inference for Perturbation and High-dimensional Expression Response**
 
-CIPHER is a tool designed for analyzing covariance structures in high-dimensional gene expression data, particularly in response to perturbations.
+CIPHER models the mean transcriptomic response to a perturbation as a linear
+readout of the *control* gene–gene covariance. Writing the mean expression shift
+of a perturbation as `delta_x`, CIPHER assumes
 
-## Features
+```
+delta_x  ≈  Sigma @ u
+```
 
-- Covariance inference for gene expression datasets
-- Designed for high-dimensional data
-- Suitable for perturbation experiments
+where `Sigma` is the covariance estimated from unperturbed (control) cells and
+`u` is a sparse driver vector. This single relation powers two complementary
+tasks:
+
+- **Forward** — given a *known* perturbation (a gene that was knocked
+  down/out), predict its transcriptome-wide expression shift as a rank-1
+  projection onto `Sigma[:, g]`, and score it against the observed shift
+  (R², R²₀, Spearman, Pearson). Null covariances quantify the baseline expected
+  from marginal statistics alone.
+- **Reverse** — given only an observed shift `delta_x`, solve for `u` and rank
+  genes by `|u|` to recover the perturbed gene (the *driver*). On Perturb-seq
+  data, where the true target is known, this yields a rank / ROC-AUC per
+  perturbation; on any control-vs-condition dataset it yields a ranked list of
+  candidate driver genes.
+
+Preprint: https://www.biorxiv.org/content/10.1101/2025.06.27.661814v1
 
 ## Installation
 
+Install the package in editable mode from the repository root:
+
 ```bash
-# Example installation command
-bash .init_conda.sh
-mamba activate .conda/cipher
+pip install -e .
 ```
 
-## Usage of CIPHER module
+Optional extras:
+
+```bash
+pip install -e ".[bayes]"   # PyMC horseshoe reverse (bayesian_reverse)
+pip install -e ".[dev]"     # test dependencies (pytest)
+```
+
+On the lab HPC the full conda environment (matching the exact versions used for
+the paper) can be built from the pinned spec:
+
+```bash
+conda env create -f environment.yaml
+```
+
+## Quickstart (Python)
+
+The public API is exposed at the top level of the `cipher` package. The six
+normalization modes are `raw`, `log1p`, `frequency`, `libsize10k`, `log1CP10k`,
+and `pflog` (see `cipher.NORMALIZATION_MODES`). The reverse solvers are
+`matched_filter` (the default — no matrix inverse, robust when there are fewer
+control cells than genes), `pinv`, `ridge`, and `lstsq`.
+
+### (0) Precompute to disk, then load
+
+`preprocess_dataset` estimates `Sigma` and per-perturbation statistics for one
+or more normalizations and writes them to a directory; `load_precomputed` reads
+one mode back as a lightweight, memory-mappable object.
 
 ```python
-from src.r2 import full_analysis_with_nulls_soft_and_plots
-# Example usage of CIPHER module
-adata_path = 'path/to/your/perturb-seq-adata.h5ad'
-output_dir = 'path/to/output_dir'
-full_analysis_with_nulls_soft_and_plots(adata_path, save_dir=output_dir)
+import cipher
+
+# Precompute covariance + per-perturbation stats for several normalizations.
+cfg = cipher.PreprocessConfig(
+    expression_threshold=1.0,
+    min_samples_per_pert=100,
+    cov_max_cells=10000,
+)
+outdir = cipher.preprocess_dataset(
+    "path/to/perturbseq.h5ad",
+    "path/to/output_dir",
+    modes=["log1p", "log1CP10k"],   # None => all six modes
+    config=cfg,
+    overwrite=False,
+)
+
+# Read one normalization back.
+pc = cipher.load_precomputed("path/to/output_dir", mode="log1p")
+Sigma = pc.sigma(mmap=True)          # (p, p) covariance, memory-mapped
+dx = pc.dx                           # (n_perts, p) mean shifts
+print(pc.gene_names.shape, pc.perturbations.shape, pc.target_gene_indices.shape)
+
+# List which modes are available in a preprocessed directory.
+print(cipher.list_modes("path/to/output_dir"))
 ```
 
-## Reproduce paper figures
-**Notebooks**
+### (1.1) Forward prediction — `ForwardResult`
 
-Notebooks to reproduce each figure of the paper can be found in the notebooks directory.
-All notebooks work with the supplied conda environment.
+```python
+import cipher
 
-**Notebook figures:**
----
-notebooks/LR_fig2.ipynb
-- Fig. 2 (All)
-notebooks/LR_fig3_R2_hist.ipynb
-- Fig. 3 (A-M)
-notebooks/LF_double_pert_R2_and_inference.ipynb
-- Fig. 3 (N, O, P)
-- Fig. 4 H
-notebooks/LR_fig3_cross_dataset.ipynb
-- Fig. 3 Q, R
-notebooks/LR_fig4.ipynb
-- Fig. 4 (A-G)
-notebooks/LR_fig5_TRADE_and_EGENES.ipynb
-- Fig. 5
+res = cipher.forward_prediction(
+    "path/to/perturbseq.h5ad",
+    normalization="log1p",
+    nulls=("meanfield", "shuffled"),   # baseline covariance models
+    max_perturbations=None,            # int for a quick smoke test
+)
 
-## Source datasets
-**Link to google drive with source data**
-https://drive.google.com/drive/folders/1HYEDb_7tbaO0XvQ_36t2WuA2vgYp3YX5
+res.results     # pandas DataFrame: one row per perturbation (R2_real, R20_real, ...)
+res.summary     # dict: mean_R2_real, mean_R2_<null>, n_perturbations, ...
+res.save("path/to/output_dir")        # writes <dataset>_forward_<norm>.csv
+```
 
-**Method benchmarks**
-Benchmarking notebooks can be found in the benchmarks/ folder
+You can also run forward metrics straight from a preprocessed directory
+(real `Sigma` only): `cipher.forward_from_precomputed("path/to/output_dir", "log1p")`.
 
+### (1.2) Reverse prediction — `ReverseResult`
+
+```python
+import cipher
+
+res = cipher.reverse_prediction(
+    "path/to/perturbseq.h5ad",
+    normalization="log1p",
+    method="matched_filter",   # matched_filter (default) | pinv | ridge | lstsq
+    top_k=10,
+)
+
+res.summary["mean_auc"]                 # mean one-vs-rest ROC-AUC of the true driver
+res.summary["top10_accuracy"]           # fraction with the target gene in the top-k
+res.results.sort_values("auc").head()   # per-perturbation ranks / AUC
+res.save("path/to/output_dir")          # writes <dataset>_reverse_<norm>_<method>.csv
+```
+
+`cipher.reverse_from_precomputed(...)` runs the same from a preprocessed
+directory. With the `[bayes]` extra, `cipher.bayesian_reverse(Sigma, delta_x)`
+fits a horseshoe prior and returns posterior inclusion probabilities.
+
+### (2) Condition drivers — `DriverResult`
+
+The reverse problem applied outside Perturb-seq: given a control group and a
+condition group, rank the genes most likely to *drive* the condition. There is
+no ground-truth label, so the output is a ranked candidate list.
+
+```python
+import cipher
+
+# From an .h5ad / AnnData with a grouping column in obs:
+res = cipher.condition_drivers(
+    "path/to/dataset.h5ad",
+    condition_key="stim",       # obs column grouping the cells
+    control_value="rest",       # value marking control cells
+    condition_value="stim",     # None => every non-control cell
+    normalization="log1p",
+    method="matched_filter",    # robust default (no matrix inverse)
+)
+res.top(20)                     # top-ranked candidate driver genes
+res.save("path/to/output_dir") # writes <name>_drivers_<norm>_<method>.csv
+
+# Or directly from two raw (cells x genes) matrices sharing a gene axis:
+res = cipher.condition_drivers_from_matrices(
+    control_X, condition_X, gene_names,
+    normalization="log1p",
+    method="matched_filter",
+)
+```
+
+### Lower-level `Dataset`
+
+For custom pipelines, `load_dataset` returns a `Dataset` that handles
+perturbation detection, target-gene mapping, and control/perturbation matrices.
+
+```python
+import cipher
+
+ds = cipher.load_dataset(
+    "path/to/perturbseq.h5ad",
+    expression_threshold=1.0,
+    min_samples=100,
+)
+ds.n_genes, ds.n_perturbations
+ds.gene_names                       # np.array[str], length p
+ds.perturbations                    # list[str], non-control perturbation labels
+ds.target_gene_indices              # int64 array parallel to perturbations (-1 if absent)
+
+control = ds.control_matrix(dense=True)          # (n_control, p)
+pert = ds.perturbation_matrix(ds.perturbations[0], dense=True)
+g = ds.gene_index("GATA1")
+
+# Estimate the control covariance and run one perturbation forward by hand:
+Sigma = cipher.compute_covariance(cipher.normalize_matrix(control, "log1p"))
+```
+
+## Command-line usage
+
+Installing the package registers a `cipher` console script with four
+subcommands. Each takes an input `.h5ad` and an output directory (`-o`).
+
+```bash
+# Precompute Sigma + per-perturbation stats for chosen modes.
+cipher preprocess path/to/perturbseq.h5ad -o out/ --modes log1p log1CP10k
+
+# Forward prediction (transcriptomic shift) against null covariances.
+cipher forward path/to/perturbseq.h5ad -o out/ --normalization log1p \
+    --nulls meanfield shuffled
+
+# Reverse prediction (recover the perturbed gene).
+cipher reverse path/to/perturbseq.h5ad -o out/ --normalization log1p \
+    --method matched_filter --top-k 10
+
+# Condition-driver prediction (control vs condition, no ground truth).
+cipher driver path/to/dataset.h5ad -o out/ \
+    --condition-key stim --control rest --condition stim \
+    --method matched_filter --top 25
+```
+
+Run `cipher --version` or `cipher <command> --help` for all options.
+
+## Data / source datasets
+
+**Source data (Google Drive):**
+Will be uploaded to zenodo.
+
+## Reproducing paper figures
+
+Notebooks to reproduce each figure of the paper live in the `notebooks/`
+directory and run against the (still-included) `src/` implementation used for
+the publication. All notebooks work with the supplied conda environment.
+
+| Notebook | Figures |
+| --- | --- |
+| `notebooks/LR_fig2.ipynb` | Fig. 2 (All) |
+| `notebooks/LR_fig3_R2_hist.ipynb` | Fig. 3 (A–M) |
+| `notebooks/LF_double_pert_R2_and_inference.ipynb` | Fig. 3 (N, O, P); Fig. 4 H |
+| `notebooks/LR_fig3_cross_dataset.ipynb` | Fig. 3 (Q, R) |
+| `notebooks/LR_fig4.ipynb` | Fig. 4 (A–G) |
+| `notebooks/LR_fig5_TRADE_and_EGENES.ipynb` | Fig. 5 |
+
+**Method benchmarks** comparing CIPHER against other approaches are in the
+`benchmarks/` folder.
+
+## Preprint
+
+Kuznets-Speck, B., Schwartz, L., Sun, H., Melzer, M. E., Kumari, N., Haley, B.,
+Prashnani, E., Vaikuntanathan, S., & Goyal, Y. (2025). *Fluctuation structure
+predicts genome-wide perturbation outcomes.* bioRxiv.
+https://www.biorxiv.org/content/10.1101/2025.06.27.661814v1
 
 ## License
 
