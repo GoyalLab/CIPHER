@@ -4,5 +4,6 @@
 .tmp
 output
 .logs
+*.egg-info
 __pycache__
 data
