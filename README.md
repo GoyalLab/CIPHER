@@ -16,9 +16,11 @@ tasks:
 
 - **Forward** — given a *known* perturbation (a gene that was knocked
   down/out), predict its transcriptome-wide expression shift as a rank-1
-  projection onto `Sigma[:, g]`, and score it against the observed shift
-  (R², R²₀, Spearman, Pearson). Null covariances quantify the baseline expected
-  from marginal statistics alone.
+  projection `dx ≈ a_hat · Sigma[:, g]`. The scalar `a_hat` is fit by least
+  squares on a *train* set of genes and scored on a (optionally held-out) *test*
+  set, reporting uncentered/centered R², Pearson, Spearman, cosine, MSE/RMSE/MAE
+  and sign accuracy. Null covariances quantify the baseline expected from
+  marginal statistics with the gene-gene covariance destroyed.
 - **Reverse** — given only an observed shift `delta_x`, solve for `u` and rank
   genes by `|u|` to recover the perturbed gene (the *driver*). On Perturb-seq
   data, where the true target is known, this yields a rank / ROC-AUC per
@@ -99,16 +101,20 @@ res = cipher.forward_prediction(
     "path/to/perturbseq.h5ad",
     normalization="log1p",
     nulls=("meanfield", "shuffled"),   # baseline covariance models
+    holdout_frac=0.0,                  # 0.5 for out-of-sample gene holdout (paper setting)
     max_perturbations=None,            # int for a quick smoke test
 )
 
-res.results     # pandas DataFrame: one row per perturbation (R2_real, R20_real, ...)
-res.summary     # dict: mean_R2_real, mean_R2_<null>, n_perturbations, ...
+res.results     # DataFrame per perturbation: r2_uncentered_real, r2_centered_real,
+                # pearson_real, spearman_real, cosine_real, mse_real, sign_accuracy_real,
+                # a_hat, n_train_genes, n_test_genes, r2_uncentered_<null>, ...
+res.summary     # dict: mean_r2_uncentered_real, mean_pearson_real, mean_r2_uncentered_<null>, ...
 res.save("path/to/output_dir")        # writes <dataset>_forward_<norm>.csv
 ```
 
 You can also run forward metrics straight from a preprocessed directory
-(real `Sigma` only): `cipher.forward_from_precomputed("path/to/output_dir", "log1p")`.
+(real `Sigma` only, matching the paper's final forward recompute):
+`cipher.forward_from_precomputed("path/to/output_dir", "log1p", holdout_frac=0.5)`.
 
 ### (1.2) Reverse prediction — `ReverseResult`
 

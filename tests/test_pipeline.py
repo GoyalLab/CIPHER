@@ -25,11 +25,27 @@ def test_forward_beats_meanfield_null(h5ad_path):
     res = cipher.forward_prediction(
         h5ad_path, normalization="log1p", nulls=("meanfield",),
         expression_threshold=0.0, min_samples=5, cov_max_cells=None, progress=False)
-    real = res.summary["mean_R2_real"]
-    null = res.summary["mean_R2_meanfield"]
+    real = res.summary["mean_r2_uncentered_real"]
+    null = res.summary["mean_r2_uncentered_meanfield"]
     assert res.summary["n_perturbations"] == 8
     assert real > 0.5
     assert real > null + 0.2       # real signal notably beats the marginals-only null
+    # the full metric set is present per perturbation
+    for col in ("r2_uncentered_real", "r2_centered_real", "pearson_real",
+                "cosine_real", "sign_accuracy_real", "a_hat"):
+        assert col in res.results.columns
+
+
+def test_forward_gene_holdout_out_of_sample(h5ad_path):
+    """Out-of-sample gene holdout: a_hat fit on train genes still explains held-out genes."""
+    res = cipher.forward_prediction(
+        h5ad_path, normalization="log1p", nulls=("meanfield",), holdout_frac=0.5,
+        min_train_genes=20, min_test_genes=20, expression_threshold=0.0,
+        min_samples=5, cov_max_cells=None, progress=False)
+    assert res.summary["n_perturbations"] == 8
+    assert res.holdout_frac == 0.5
+    assert (res.results["n_test_genes"] < res.results["n_train_genes"] + 1).all()
+    assert res.summary["mean_r2_uncentered_real"] > res.summary["mean_r2_uncentered_meanfield"]
 
 
 def test_reverse_recovers_driver(h5ad_path, synth):
@@ -67,7 +83,7 @@ def test_preprocess_then_precomputed_agree(tmp_path, h5ad_path):
     assert fwd.summary["n_perturbations"] == rev.summary["n_perturbations"]
     assert fwd.summary["n_perturbations"] == len(pc.perturbations)
     # the precomputed artifacts reproduce the same real signal as the live pipeline
-    assert fwd.summary["mean_R2_real"] > 0.5
+    assert fwd.summary["mean_r2_uncentered_real"] > 0.5
     assert rev.summary["mean_auc"] > 0.6
 
 

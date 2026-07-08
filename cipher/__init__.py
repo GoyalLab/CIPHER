@@ -34,7 +34,10 @@ from .covariance import (
 )
 from .core import (
     forward_predict,
+    forward_fit,
     forward_metrics,
+    gene_holdout_masks,
+    FORWARD_METRICS,
     reverse_scores,
     reverse_operator,
     matched_filter_scores,
@@ -63,7 +66,8 @@ __all__ = [
     "compute_covariance", "null_covariance", "meanfield_covariance",
     "shuffled_covariance", "zinb_covariance",
     # core
-    "forward_predict", "forward_metrics", "reverse_scores", "reverse_operator",
+    "forward_predict", "forward_fit", "forward_metrics", "gene_holdout_masks",
+    "FORWARD_METRICS", "reverse_scores", "reverse_operator",
     "matched_filter_scores", "rank_of", "top_k_hit", "one_vs_rest_auc",
     # forward
     "forward_prediction", "forward_from_precomputed", "ForwardResult",

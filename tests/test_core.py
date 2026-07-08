@@ -10,7 +10,9 @@ import pytest
 
 from cipher.core import (
     forward_predict,
+    forward_fit,
     forward_metrics,
+    gene_holdout_masks,
     reverse_scores,
     reverse_operator,
     matched_filter_scores,
@@ -31,24 +33,58 @@ def _spd_sigma(p: int = 30, seed: int = 1) -> np.ndarray:
 # --------------------------------------------------------------------------- #
 # forward problem
 # --------------------------------------------------------------------------- #
-def test_forward_predict_recovers_u_opt():
-    """On a rank-1 shift ``delta_x = u * Sigma[:, g]`` the optimum recovers ``u``."""
+def test_forward_predict_recovers_a_hat():
+    """On a rank-1 shift ``delta_x = a * Sigma[:, g]`` the optimum recovers ``a``."""
     Sigma = _spd_sigma(20, seed=0)
-    g, u_true = 7, 1.37
-    delta_x = u_true * Sigma[:, g]
-    pred, u_opt = forward_predict(Sigma, delta_x, g)
-    assert u_opt == pytest.approx(u_true, rel=1e-4)
+    g, a_true = 7, 1.37
+    delta_x = a_true * Sigma[:, g]
+    pred, a_hat = forward_predict(Sigma, delta_x, g)
+    assert a_hat == pytest.approx(a_true, rel=1e-4)
     np.testing.assert_allclose(pred, delta_x, rtol=1e-4, atol=1e-6)
 
 
+def test_forward_fit_uses_train_mask_only():
+    """``forward_fit`` recovers the scalar even when the target gene is excluded."""
+    Sigma = _spd_sigma(20, seed=0)
+    g = 3
+    col = Sigma[:, g]
+    dx = 2.0 * col
+    mask = np.ones(20, dtype=bool)
+    mask[g] = False
+    a_hat, denom = forward_fit(col, dx, mask=mask)
+    assert a_hat == pytest.approx(2.0, rel=1e-6)
+    assert denom > 0
+
+
 def test_forward_metrics_perfect_prediction():
-    """A perfect prediction gives R2 == R20 == Pearson == 1."""
-    delta_x = np.random.default_rng(2).normal(size=25)
-    m = forward_metrics(delta_x, delta_x, mean_pert=delta_x)
-    assert m["R2"] == pytest.approx(1.0, abs=1e-8)
-    assert m["R20"] == pytest.approx(1.0, abs=1e-8)
-    assert m["Pearson"] == pytest.approx(1.0, abs=1e-6)
-    assert m["Spearman"] == pytest.approx(1.0, abs=1e-6)
+    """A perfect prediction gives every correlation/R² == 1 and zero error."""
+    y = np.random.default_rng(2).normal(size=25)
+    m = forward_metrics(y, y)
+    for k in ("r2_uncentered", "r2_centered", "pearson", "spearman", "cosine",
+              "sign_accuracy"):
+        assert m[k] == pytest.approx(1.0, abs=1e-6)
+    assert m["mse"] == pytest.approx(0.0, abs=1e-12)
+    assert m["mae"] == pytest.approx(0.0, abs=1e-12)
+
+
+def test_forward_metrics_uncentered_vs_centered():
+    """Uncentered and centered R² use different denominators (sum y² vs var)."""
+    y = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+    y_pred = y + 0.5   # constant bias -> SSE = 5*0.25 = 1.25
+    m = forward_metrics(y, y_pred)
+    assert m["r2_centered"] == pytest.approx(1.0 - 1.25 / 10.0, abs=1e-9)
+    assert m["r2_uncentered"] == pytest.approx(1.0 - 1.25 / 55.0, abs=1e-9)
+
+
+def test_gene_holdout_masks():
+    tr, te = gene_holdout_masks(100, holdout_frac=0.0)
+    assert tr.all() and te.all()
+    tr, te = gene_holdout_masks(100, holdout_frac=0.3, seed=0)
+    assert te.sum() == 30 and tr.sum() == 70
+    assert not np.any(tr & te)                    # train/test disjoint
+    tr, te = gene_holdout_masks(100, target_idx=5, holdout_frac=0.0,
+                                exclude_target_fit=True, exclude_target_eval=True)
+    assert not tr[5] and not te[5]
 
 
 # --------------------------------------------------------------------------- #

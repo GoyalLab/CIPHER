@@ -38,19 +38,19 @@ def _finalize(fig, save):
         fig.savefig(save, bbox_inches="tight")
 
 
-def plot_metric_histograms(result, metric="R2", bins=30, ax=None, save=None):
+def plot_metric_histograms(result, metric="r2_uncentered", bins=30, ax=None, save=None):
     """Histogram of a forward metric for the real ``Sigma`` versus each null.
 
     Parameters
     ----------
     result : cipher.ForwardResult
-        Has a ``.results`` DataFrame with columns like ``R2_real``,
-        ``R2_meanfield``, ``R2_shuffled`` and a ``.nulls`` tuple naming the
-        null models that were run.
+        Has a ``.results`` DataFrame with columns like ``r2_uncentered_real``,
+        ``r2_uncentered_meanfield`` and a ``.nulls`` tuple naming the null models.
     metric : str
-        Metric prefix to plot (``"R2"``, ``"R20"``, ``"Spearman"``, ``"Pearson"``).
-        The real series is column ``f"{metric}_real"`` and each null is
-        ``f"{metric}_{null}"``.
+        Metric prefix to plot — any name in :data:`cipher.core.FORWARD_METRICS`
+        (e.g. ``"r2_uncentered"``, ``"pearson"``). The real series is column
+        ``f"{metric}_real"`` and each null (when present) is ``f"{metric}_{null}"``.
+        Only ``r2_uncentered`` is stored for the nulls.
     bins : int
         Number of histogram bins (shared across all series for comparability).
 

@@ -39,6 +39,8 @@ def build_parser() -> argparse.ArgumentParser:
     _add_common(fw)
     fw.add_argument("--normalization", default="log1p")
     fw.add_argument("--nulls", nargs="*", default=["meanfield", "shuffled"])
+    fw.add_argument("--holdout-frac", type=float, default=0.0,
+                    help="fraction of genes held out for out-of-sample evaluation (0.5 in the paper)")
     fw.add_argument("--expression-threshold", type=float, default=1.0)
     fw.add_argument("--min-samples", type=int, default=100)
     fw.add_argument("--max-perturbations", type=int, default=None)
@@ -97,7 +99,7 @@ def main(argv=None) -> int:
     if args.command == "forward":
         res = cipher.forward_prediction(
             args.input, normalization=args.normalization, nulls=args.nulls,
-            max_perturbations=args.max_perturbations,
+            holdout_frac=args.holdout_frac, max_perturbations=args.max_perturbations,
             expression_threshold=args.expression_threshold, min_samples=args.min_samples)
         path = res.save(outdir)
         print(json.dumps(res.summary, indent=2))
