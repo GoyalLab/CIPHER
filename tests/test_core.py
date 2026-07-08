@@ -131,6 +131,18 @@ def test_one_vs_rest_auc_is_one_when_target_is_max():
     assert one_vs_rest_auc(scores, 3) == pytest.approx(1.0)
 
 
+def test_one_vs_rest_auc_tie_handling():
+    """Ties count as 0.5 (Mann-Whitney), matching sklearn.roc_auc_score exactly.
+
+    |scores| = [0.5, 0.5, 0.1], target=0 -> negatives {0.5, 0.1}: one strictly
+    below (win) and one tie -> AUC = (1 + 0.5) / 2 = 0.75.
+    """
+    scores = np.array([0.5, -0.5, 0.1])
+    assert one_vs_rest_auc(scores, 0) == pytest.approx(0.75)
+    # all-equal scores -> pure chance, AUC == 0.5
+    assert one_vs_rest_auc(np.full(6, 2.0), 3) == pytest.approx(0.5)
+
+
 def test_rank_of_and_top_k_hit():
     scores = np.array([0.1, -0.5, 0.3, 0.05])         # |.| order: idx 1,2,0,3
     assert rank_of(scores, 1) == 0

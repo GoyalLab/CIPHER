@@ -37,11 +37,13 @@ Install the package in editable mode from the repository root:
 pip install -e .
 ```
 
-Optional extras:
+The core install is lightweight (`numpy`, `scipy`, `pandas`, `anndata`, `h5py`,
+`tqdm`). Optional extras add heavier, feature-specific dependencies:
 
 ```bash
+pip install -e ".[plot]"    # matplotlib plotting helpers (cipher.plotting)
 pip install -e ".[bayes]"   # PyMC horseshoe reverse (bayesian_reverse)
-pip install -e ".[dev]"     # test dependencies (pytest)
+pip install -e ".[dev]"     # tests (pytest)
 ```
 
 On the lab HPC the full conda environment (matching the exact versions used for

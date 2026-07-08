@@ -253,16 +253,22 @@ def top_k_hit(scores, target_idx, k: int = 10) -> bool:
 
 
 def one_vs_rest_auc(scores, target_idx) -> float:
-    """ROC-AUC of ``|score|`` for identifying the single true driver among all genes."""
-    from sklearn.metrics import roc_auc_score
+    """ROC-AUC of ``|score|`` for identifying the single true driver among all genes.
 
+    With one positive (the true driver) against every other gene as a negative,
+    the ROC-AUC is the Mann-Whitney statistic ``P(|s_true| > |s_neg|) + 0.5·P(==)``
+    over the negatives -- computed directly (no scikit-learn dependency).
+    """
     s = np.abs(np.asarray(scores, dtype=np.float64))
     n = s.size
-    if n < 2:
+    target_idx = int(target_idx)
+    if n < 2 or not (0 <= target_idx < n) or not np.isfinite(s[target_idx]):
         return np.nan
-    y = np.zeros(n)
-    y[target_idx] = 1
-    try:
-        return float(roc_auc_score(y, s))
-    except ValueError:
+    s_pos = s[target_idx]
+    neg = np.delete(s, target_idx)
+    neg = neg[np.isfinite(neg)]
+    if neg.size == 0:
         return np.nan
+    wins = int(np.count_nonzero(neg < s_pos))
+    ties = int(np.count_nonzero(neg == s_pos))
+    return float((wins + 0.5 * ties) / neg.size)

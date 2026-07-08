@@ -1,19 +1,19 @@
 [build-system]
-requires = ["setuptools>=64", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "cipher-perturb"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Covariance Inference for Perturbation and High-dimensional Expression Response"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { file = "LICENSE" }
-authors = [{ name = "Goyal Lab" }]
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Yogesh Goyal, Northwestern University", email = "yogesh.goyal@northwestern.edu" }]
 keywords = ["perturb-seq", "single-cell", "covariance", "perturbation", "genomics"]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
 ]
@@ -22,16 +22,14 @@ dependencies = [
     "scipy>=1.10",
     "pandas>=2.0",
     "anndata>=0.9",
-    "scanpy>=1.9",
     "h5py>=3.8",
-    "scikit-learn>=1.2",
     "tqdm>=4.64",
-    "matplotlib>=3.6",
 ]
 
 [project.optional-dependencies]
-bayes = ["pymc>=5.0"]
-dev = ["pytest>=7.0"]
+plot = ["matplotlib>=3.6"]           # cipher.plotting helpers
+bayes = ["pymc>=5.0"]                 # bayesian_reverse (horseshoe)
+dev = ["pytest>=7.0", "matplotlib>=3.6"]
 
 [project.urls]
 Homepage = "https://github.com/GoyalLab/CIPHER"
@@ -42,6 +40,9 @@ cipher = "cipher.cli:main"
 
 [tool.setuptools]
 packages = ["cipher"]
+
+[tool.setuptools.dynamic]
+version = { attr = "cipher.__version__" }
 
 [tool.setuptools.package-data]
 cipher = ["py.typed"]
