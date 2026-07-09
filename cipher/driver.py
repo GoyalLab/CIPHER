@@ -53,13 +53,17 @@ def condition_drivers_from_matrices(
     normalization: str = "log1p",
     method: str = "matched_filter",
     ridge: float = 1e-2,
+    tau2: float = 1.0,
     name: str = "condition",
 ) -> DriverResult:
     """Rank driver genes from raw control and condition (cells x genes) matrices.
 
     ``control_X`` and ``condition_X`` must share the same gene axis (``gene_names``).
-    ``method`` defaults to ``matched_filter`` (no matrix inverse — the most robust
-    choice for wide gene panels); use ``pinv``/``ridge`` for the inverse solution.
+    ``method`` defaults to ``matched_filter`` (no matrix inverse — robust and cheap
+    for a single condition); use ``pinv``/``ridge`` for the linear inverse, or
+    ``posterior``/``pip`` for the fullH_diag empirical-Bayes inverse (more accurate
+    but needs an eigendecomposition; the prior variance ``tau2`` is *fixed* here
+    since there is only one condition group to estimate it from).
     """
     control_X = to_dense(control_X).astype(np.float64)
     condition_X = to_dense(condition_X).astype(np.float64)
@@ -82,7 +86,18 @@ def condition_drivers_from_matrices(
     delta_x = condition_norm.mean(axis=0) - control_mean
     Sigma = compute_covariance(control_norm)
 
-    if method == "matched_filter":
+    if method in ("posterior", "pip"):
+        from .inverse import build_model, posterior_scores_batch, pip_scores_batch
+        from .normalize import mean_var
+        _, control_var = mean_var(control_norm)
+        _, condition_var = mean_var(condition_norm)
+        model = build_model(Sigma, var_pert=condition_var[None, :],
+                            n0=float(control_norm.shape[0]),
+                            nu=[float(condition_norm.shape[0])], control_var=control_var)
+        dxb = delta_x[None, :]
+        score_fn = pip_scores_batch if method == "pip" else posterior_scores_batch
+        scores = np.asarray(score_fn(model, dxb, 0, 1, float(tau2))[0], dtype=np.float64)
+    elif method == "matched_filter":
         scores = matched_filter_scores(Sigma, delta_x)
     else:
         scores = reverse_scores(Sigma, delta_x, method=method, ridge=ridge)
@@ -105,9 +120,13 @@ def condition_drivers(
     normalization: str = "log1p",
     method: str = "matched_filter",
     ridge: float = 1e-2,
+    tau2: float = 1.0,
     name: str | None = None,
 ) -> DriverResult:
     """Rank condition-driver genes from an AnnData / ``.h5ad`` with a group column.
+
+    ``method`` defaults to ``matched_filter``; ``posterior`` / ``pip`` use the
+    fullH_diag empirical-Bayes inverse (see :func:`condition_drivers_from_matrices`).
 
     Parameters
     ----------
@@ -150,4 +169,4 @@ def condition_drivers(
     condition_X = adata[condition_mask].X
     return condition_drivers_from_matrices(
         control_X, condition_X, gene_names,
-        normalization=normalization, method=method, ridge=ridge, name=name)
+        normalization=normalization, method=method, ridge=ridge, tau2=tau2, name=name)

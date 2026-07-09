@@ -86,3 +86,34 @@ def test_build_model_and_fit_tau2():
     dx = rng.normal(size=(n_pert, p))
     eb = cipher.fit_tau2(model, dx)
     assert eb["tau2_use"] > 0
+
+
+# --------------------------------------------------------------------------- #
+# reverse_prediction now defaults to the posterior inverse; condition_drivers
+# gains it as an option
+# --------------------------------------------------------------------------- #
+def test_reverse_prediction_defaults_to_posterior(h5ad_path, synth):
+    res = cipher.reverse_prediction(
+        h5ad_path, normalization="log1p", cov_max_cells=None,
+        expression_threshold=0.0, min_samples=5, progress=False)
+    assert res.method == "posterior"           # default changed to the fullH_diag inverse
+    assert res.summary["mean_auc"] > 0.8
+    for col in ("target_rank", "percentile", "top10_hit", "auc"):
+        assert col in res.results.columns
+    # linear baselines still work and return the same-shaped result
+    lin = cipher.reverse_prediction(
+        h5ad_path, normalization="log1p", method="matched_filter", cov_max_cells=None,
+        expression_threshold=0.0, min_samples=5, progress=False)
+    assert lin.method == "matched_filter"
+    assert set(res.results.columns) == set(lin.results.columns)
+
+
+def test_condition_drivers_posterior_option(h5ad_path):
+    ds = cipher.load_dataset(h5ad_path, expression_threshold=0.0, min_samples=5)
+    target = ds.perturbations[0]
+    control_X = ds.control_matrix(dense=True)
+    condition_X = ds.perturbation_matrix(target, dense=True)
+    dr = cipher.condition_drivers_from_matrices(
+        control_X, condition_X, ds.gene_names, normalization="log1p", method="posterior")
+    assert dr.method == "posterior"
+    assert target in dr.ranking["gene"].head(5).tolist()

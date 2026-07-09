@@ -362,7 +362,7 @@ def _run_scoring(model, dx, target_idx, method, tau2, gene_names, perturbations,
     df["normalization"] = normalization
     df["method"] = method
     summary = {"dataset": dataset_name, "normalization": normalization, "method": method,
-               "tau2": float(tau2), **summary}
+               "tau2": float(tau2), "n_genes": int(n_gene), **summary}
     return InverseResult(results=df, summary=summary, roc=roc, prc=prc, method=method,
                          normalization=normalization, dataset_name=dataset_name,
                          tau2=float(tau2), scores=out)

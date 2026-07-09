@@ -48,8 +48,8 @@ def build_parser() -> argparse.ArgumentParser:
     rv = sub.add_parser("reverse", help="Reverse prediction (recover perturbed gene)")
     _add_common(rv)
     rv.add_argument("--normalization", default="log1p")
-    rv.add_argument("--method", default="matched_filter",
-                    choices=["pinv", "ridge", "lstsq", "matched_filter"])
+    rv.add_argument("--method", default="posterior",
+                    choices=["posterior", "pip", "matched_filter", "pinv", "ridge", "lstsq"])
     rv.add_argument("--top-k", type=int, default=10)
     rv.add_argument("--expression-threshold", type=float, default=1.0)
     rv.add_argument("--min-samples", type=int, default=100)
@@ -64,7 +64,7 @@ def build_parser() -> argparse.ArgumentParser:
                     help="value marking the condition (default: all non-control)")
     dr.add_argument("--normalization", default="log1p")
     dr.add_argument("--method", default="matched_filter",
-                    choices=["pinv", "ridge", "lstsq", "matched_filter"])
+                    choices=["matched_filter", "posterior", "pip", "pinv", "ridge", "lstsq"])
     dr.add_argument("--top", type=int, default=25, help="rows to print")
     return parser
 

@@ -1,5 +1,7 @@
 # CIPHER
 
+![CIPHER](resources/img/cipher.jpg)
+
 **Covariance Inference for Perturbation and High-dimensional Expression Response**
 
 CIPHER models the mean transcriptomic response to a perturbation as a linear
@@ -55,47 +57,17 @@ conda env create -f environment.yaml
 
 ## Quickstart (Python)
 
-The public API is exposed at the top level of the `cipher` package. The six
-normalization modes are `raw`, `log1p`, `frequency`, `libsize10k`, `log1CP10k`,
-and `pflog` (see `cipher.NORMALIZATION_MODES`). The linear reverse solvers are
-`matched_filter` (the default — no matrix inverse, robust when there are fewer
-control cells than genes), `pinv`, `ridge`, and `lstsq`; the strongest inverse is
-the empirical-Bayes `posterior_inverse` (see 1.2b).
+The public API is exposed at the top level of the `cipher` package. Each
+application below takes a Perturb-seq `.h5ad` file and returns a result object —
+**start here**. The six normalization modes are `raw`, `log1p`, `frequency`,
+`libsize10k`, `log1CP10k`, and `pflog` (see `cipher.NORMALIZATION_MODES`). Driver
+recovery (reverse prediction) defaults to the empirical-Bayes **posterior inverse**
+(the most accurate, section 3); the linear solvers `matched_filter`, `pinv`,
+`ridge`, and `lstsq` remain available as lightweight baselines. For large or
+repeated analyses, precompute `Sigma` and the per-perturbation statistics to disk
+once (section 5).
 
-### (0) Precompute to disk, then load
-
-`preprocess_dataset` estimates `Sigma` and per-perturbation statistics for one
-or more normalizations and writes them to a directory; `load_precomputed` reads
-one mode back as a lightweight, memory-mappable object.
-
-```python
-import cipher
-
-# Precompute covariance + per-perturbation stats for several normalizations.
-cfg = cipher.PreprocessConfig(
-    expression_threshold=1.0,
-    min_samples_per_pert=100,
-    cov_max_cells=10000,
-)
-outdir = cipher.preprocess_dataset(
-    "path/to/perturbseq.h5ad",
-    "path/to/output_dir",
-    modes=["log1p", "log1CP10k"],   # None => all six modes
-    config=cfg,
-    overwrite=False,
-)
-
-# Read one normalization back.
-pc = cipher.load_precomputed("path/to/output_dir", mode="log1p")
-Sigma = pc.sigma(mmap=True)          # (p, p) covariance, memory-mapped
-dx = pc.dx                           # (n_perts, p) mean shifts
-print(pc.gene_names.shape, pc.perturbations.shape, pc.target_gene_indices.shape)
-
-# List which modes are available in a preprocessed directory.
-print(cipher.list_modes("path/to/output_dir"))
-```
-
-### (1.1) Forward prediction — `ForwardResult`
+### 1. Forward prediction — predict a perturbation's shift (`ForwardResult`)
 
 ```python
 import cipher
@@ -119,7 +91,7 @@ You can also run forward metrics straight from a preprocessed directory
 (real `Sigma` only, matching the paper's final forward recompute):
 `cipher.forward_from_precomputed("path/to/output_dir", "log1p", holdout_frac=0.5)`.
 
-### (1.2) Reverse prediction — `ReverseResult`
+### 2. Reverse prediction — recover the perturbed gene (`ReverseResult`)
 
 ```python
 import cipher
@@ -127,7 +99,7 @@ import cipher
 res = cipher.reverse_prediction(
     "path/to/perturbseq.h5ad",
     normalization="log1p",
-    method="matched_filter",   # matched_filter (default) | pinv | ridge | lstsq
+    method="posterior",   # posterior (default) | pip | matched_filter | pinv | ridge | lstsq
     top_k=10,
 )
 
@@ -137,24 +109,29 @@ res.results.sort_values("auc").head()   # per-perturbation ranks / AUC
 res.save("path/to/output_dir")          # writes <dataset>_reverse_<norm>_<method>.csv
 ```
 
+The default `posterior` method is the fullH_diag empirical-Bayes inverse (the most
+accurate, section 3); `matched_filter`/`pinv`/`ridge`/`lstsq` are lightweight
+linear baselines. For the pooled ROC / precision-recall curves of the posterior,
+use `cipher.posterior_inverse_prediction` (section 3) directly.
 `cipher.reverse_from_precomputed(...)` runs the same from a preprocessed
 directory. With the `[bayes]` extra, `cipher.bayesian_reverse(Sigma, delta_x)`
 fits a horseshoe prior and returns posterior inclusion probabilities.
 
-### (1.2b) Posterior inverse — `InverseResult`
+### 3. Posterior inverse — strongest driver recovery (`InverseResult`)
 
 The strongest inverse solver is the **fullH_diag posterior**: it whitens `dx` by
 its per-perturbation sampling covariance (`lambda/n0 + projected_var/nu`), fits a
 prior variance by empirical Bayes, and scores each gene by its posterior
-perturbation strength (or a single-effect PIP). It runs on the artifacts written
-by `preprocess_dataset` (needs `save_mean_var=True`, the default) and is scored
-with pooled ROC / precision-recall curves.
+perturbation strength (or a single-effect PIP), scored with pooled ROC /
+precision-recall curves.
 
 ```python
 import cipher
 
-res = cipher.posterior_inverse_from_precomputed(
-    "path/to/output_dir", "log1CP10k",
+# End-to-end from an .h5ad (moderate datasets):
+res = cipher.posterior_inverse_prediction(
+    "path/to/perturbseq.h5ad",
+    normalization="log1CP10k",
     method="posterior",         # "posterior" (default) or "pip"
 )
 res.summary["pooled_auc"]                 # pooled one-vs-rest ROC-AUC
@@ -162,9 +139,9 @@ res.summary["mean_per_pert_auc"]          # mean over perturbations
 res.summary["pooled_average_precision"]   # pooled AP (precision-recall)
 res.roc, res.prc                          # (fpr, tpr), (precision, recall) for plotting
 
-# or in memory straight from an .h5ad (moderate datasets):
-res = cipher.posterior_inverse_prediction("path/to/perturbseq.h5ad",
-                                          normalization="log1CP10k", method="posterior")
+# For large datasets, precompute once (section 5) then run from disk:
+res = cipher.posterior_inverse_from_precomputed("path/to/output_dir", "log1CP10k",
+                                                method="posterior")
 ```
 
 To reproduce the paper's per-dataset **CRISPRi vs CRISPRa** ROC/PR figure, run the
@@ -182,7 +159,7 @@ plotting.plot_inverse_group(results["CRISPRi"], curve="roc", ax=axes[0], color="
 plotting.plot_inverse_group(results["CRISPRa"], curve="roc", ax=axes[1], color="#1f77b4")
 ```
 
-### (2) Condition drivers — `DriverResult`
+### 4. Condition drivers — control vs condition (`DriverResult`)
 
 The reverse problem applied outside Perturb-seq: given a control group and a
 condition group, rank the genes most likely to *drive* the condition. There is
@@ -198,7 +175,7 @@ res = cipher.condition_drivers(
     control_value="rest",       # value marking control cells
     condition_value="stim",     # None => every non-control cell
     normalization="log1p",
-    method="matched_filter",    # robust default (no matrix inverse)
+    method="matched_filter",    # default; also "posterior"/"pip" (fullH_diag inverse), "pinv"/"ridge"
 )
 res.top(20)                     # top-ranked candidate driver genes
 res.save("path/to/output_dir") # writes <name>_drivers_<norm>_<method>.csv
@@ -209,6 +186,38 @@ res = cipher.condition_drivers_from_matrices(
     normalization="log1p",
     method="matched_filter",
 )
+```
+
+### 5. Precompute Σ + statistics to disk (for large or repeated analyses)
+
+Every application above recomputes the covariance from the `.h5ad` each call.
+For large datasets or repeated runs, `preprocess_dataset` estimates `Sigma` and
+the per-perturbation statistics for one or more normalizations and writes them to
+a directory **once**; each application then has a fast `*_from_precomputed`
+variant (`forward_from_precomputed`, `reverse_from_precomputed`,
+`posterior_inverse_from_precomputed`). `load_precomputed` reads one mode back as a
+lightweight, memory-mappable object.
+
+```python
+import cipher
+
+cfg = cipher.PreprocessConfig(
+    expression_threshold=1.0,
+    min_samples_per_pert=100,
+    cov_max_cells=10000,
+)
+outdir = cipher.preprocess_dataset(
+    "path/to/perturbseq.h5ad",
+    "path/to/output_dir",
+    modes=["log1p", "log1CP10k"],   # None => all six modes
+    config=cfg,
+    overwrite=False,
+)
+
+pc = cipher.load_precomputed("path/to/output_dir", mode="log1p")
+Sigma = pc.sigma(mmap=True)          # (p, p) covariance, memory-mapped
+dx = pc.dx                           # (n_perts, p) mean shifts
+print(cipher.list_modes("path/to/output_dir"))
 ```
 
 ### Lower-level `Dataset`
@@ -243,9 +252,6 @@ Installing the package registers a `cipher` console script with four
 subcommands. Each takes an input `.h5ad` and an output directory (`-o`).
 
 ```bash
-# Precompute Sigma + per-perturbation stats for chosen modes.
-cipher preprocess path/to/perturbseq.h5ad -o out/ --modes log1p log1CP10k
-
 # Forward prediction (transcriptomic shift) against null covariances.
 cipher forward path/to/perturbseq.h5ad -o out/ --normalization log1p \
     --nulls meanfield shuffled
@@ -258,6 +264,9 @@ cipher reverse path/to/perturbseq.h5ad -o out/ --normalization log1p \
 cipher driver path/to/dataset.h5ad -o out/ \
     --condition-key stim --control rest --condition stim \
     --method matched_filter --top 25
+
+# Precompute Sigma + per-perturbation stats for chosen modes (for scale/reuse).
+cipher preprocess path/to/perturbseq.h5ad -o out/ --modes log1p log1CP10k
 ```
 
 Run `cipher --version` or `cipher <command> --help` for all options.

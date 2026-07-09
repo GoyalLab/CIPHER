@@ -1,10 +1,11 @@
 """Reverse prediction: recover the perturbation label from the expression shift.
 
-Given an observed mean shift ``delta_x`` CIPHER solves ``delta_x ~= Sigma @ u``
-and ranks genes by ``|u|``.  On a Perturb-seq dataset (where the true perturbed
-gene is known) this yields a rank / ROC-AUC per perturbation, quantifying how
-well the driver can be recovered.  An optional Bayesian horseshoe variant
-returns posterior inclusion probabilities.
+Given an observed mean shift ``delta_x`` CIPHER ranks genes by how likely each is
+the driver.  On a Perturb-seq dataset (where the true perturbed gene is known)
+this yields a rank / ROC-AUC per perturbation.  The default solver is the
+fullH_diag empirical-Bayes posterior inverse (:mod:`cipher.inverse`, the most
+accurate); lightweight linear baselines (``matched_filter``/``pinv``/``ridge``/
+``lstsq``) and an optional PyMC horseshoe variant are also available.
 """
 from __future__ import annotations
 
@@ -54,10 +55,47 @@ def _as_dataset(data, **load_kwargs) -> Dataset:
     raise TypeError("Pass an .h5ad path or a cipher.Dataset (from load_dataset).")
 
 
+def _inverse_to_reverse(inv, top_k: int) -> "ReverseResult":
+    """Convert a posterior :class:`cipher.InverseResult` to a :class:`ReverseResult`
+    (per-perturbation rank / AUC / top-k accuracy), matching the linear-method output."""
+    src = inv.results
+    n_genes = int(inv.summary.get("n_genes", 0))
+    rank1 = pd.to_numeric(src["rank"], errors="coerce").to_numpy()
+    keep = np.isfinite(rank1)
+    src = src.loc[keep].reset_index(drop=True)
+    rank1 = rank1[keep]
+    target_rank = (rank1 - 1).astype(int)
+    auc = pd.to_numeric(src["per_pert_auc"], errors="coerce").to_numpy()
+    have = len(src) > 0
+    hit_col = f"top{top_k}_hit"
+    df = pd.DataFrame({
+        "dataset": inv.dataset_name,
+        "perturbation": src["perturbation"].to_numpy() if have else [],
+        "target_gene": src["target_gene"].to_numpy() if have else [],
+        "target_rank": target_rank,
+        "percentile": 1.0 - target_rank / max(n_genes - 1, 1),
+        hit_col: rank1 <= top_k,
+        "auc": auc,
+    })
+    df["normalization"] = inv.normalization
+    df["method"] = inv.method
+    summary = {
+        "dataset": inv.dataset_name, "normalization": inv.normalization, "method": inv.method,
+        "n_perturbations": int(len(df)), "n_genes": n_genes,
+        "mean_auc": float(np.nanmean(auc)) if have else float("nan"),
+        "median_rank": float(np.median(target_rank)) if have else float("nan"),
+        "top1_accuracy": float(np.mean(rank1 <= 1)) if have else float("nan"),
+        f"top{top_k}_accuracy": float(np.mean(rank1 <= top_k)) if have else float("nan"),
+        "tau2": float(inv.summary.get("tau2", float("nan"))),
+    }
+    return ReverseResult(results=df, summary=summary, method=inv.method,
+                         normalization=inv.normalization, dataset_name=inv.dataset_name, top_k=top_k)
+
+
 def reverse_prediction(
     data,
     normalization: str = "log1p",
-    method: str = "matched_filter",
+    method: str = "posterior",
     top_k: int = 10,
     max_perturbations: int | None = None,
     cov_max_cells: int | None = 10000,
@@ -71,15 +109,25 @@ def reverse_prediction(
     Parameters
     ----------
     method : str
-        Reverse solver: ``matched_filter`` (default) / ``pinv`` / ``ridge`` / ``lstsq``.
-        ``matched_filter`` needs no matrix inverse and is the robust choice when
-        the control covariance is singular (fewer control cells than genes);
-        ``pinv``/``ridge`` invert ``Sigma`` and can underperform in that regime.
+        Driver solver. Default ``"posterior"`` — the fullH_diag empirical-Bayes
+        posterior inverse (:mod:`cipher.inverse`), the most accurate method;
+        ``"pip"`` is its single-effect variant. The lightweight linear baselines
+        ``"matched_filter"`` / ``"pinv"`` / ``"ridge"`` / ``"lstsq"`` are also
+        available (no eigendecomposition; ``matched_filter`` needs only ``Sigma``).
+        For the pooled ROC / precision-recall curves of the posterior inverse use
+        :func:`cipher.posterior_inverse_prediction` directly.
     top_k : int
         Rank cutoff for the ``top_k_hit`` / top-k accuracy summary.
     See :func:`cipher.forward.forward_prediction` for the shared parameters.
     """
     ds = _as_dataset(data, **load_kwargs)
+    if method in {"posterior", "pip"}:
+        from .inverse import posterior_inverse_prediction
+        inv = posterior_inverse_prediction(
+            ds, normalization=normalization, method=method, cov_max_cells=cov_max_cells,
+            max_perturbations=max_perturbations, negatives_per_pert=0, seed=seed,
+            progress=progress)
+        return _inverse_to_reverse(inv, top_k)
     ds_name = ds.name
     rng_seed = stable_seed(seed, ds_name)
 
@@ -145,10 +193,20 @@ def reverse_prediction(
                          normalization=normalization, dataset_name=ds_name, top_k=top_k)
 
 
-def reverse_from_precomputed(dataset_dir, mode: str, method: str = "matched_filter",
+def reverse_from_precomputed(dataset_dir, mode: str, method: str = "posterior",
                              top_k: int = 10, ridge: float = 1e-2,
                              progress: bool = True) -> ReverseResult:
-    """Reverse metrics from a preprocessed dataset directory."""
+    """Reverse metrics from a preprocessed dataset directory.
+
+    ``method`` defaults to the fullH_diag posterior inverse (``"posterior"`` /
+    ``"pip"``); the linear baselines (``matched_filter``/``pinv``/``ridge``/``lstsq``)
+    are also available.
+    """
+    if method in {"posterior", "pip"}:
+        from .inverse import posterior_inverse_from_precomputed
+        inv = posterior_inverse_from_precomputed(dataset_dir, mode, method=method,
+                                                 negatives_per_pert=0, progress=progress)
+        return _inverse_to_reverse(inv, top_k)
     from .io import load_precomputed
 
     pc = load_precomputed(dataset_dir, mode)
