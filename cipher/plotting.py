@@ -247,3 +247,110 @@ def plot_reverse_auc(reverse_result, bins=30, ax=None, save=None):
     ax.legend()
     _finalize(fig, save)
     return ax
+
+
+# --------------------------------------------------------------------------- #
+# inverse-problem ROC / PR curves (cipher.InverseResult)
+# --------------------------------------------------------------------------- #
+def _interp_curve(x, y, grid, monotone_end=1.0):
+    """Interpolate a staircase curve onto ``grid`` (dedup x by taking max y)."""
+    x = np.asarray(x, dtype=np.float64)
+    y = np.asarray(y, dtype=np.float64)
+    order = np.argsort(x)
+    x, y = x[order], y[order]
+    ux = np.unique(x)
+    uy = np.asarray([np.max(y[x == v]) for v in ux])
+    if ux[0] > 0:
+        ux = np.r_[0.0, ux]
+        uy = np.r_[uy[0] if monotone_end is None else 0.0, uy]
+    if ux[-1] < 1:
+        ux = np.r_[ux, 1.0]
+        uy = np.r_[uy, uy[-1] if monotone_end is None else monotone_end]
+    return np.interp(grid, ux, uy)
+
+
+def plot_inverse_roc(result, ax=None, save=None, color="C0", label=None):
+    """Pooled ROC curve of a single :class:`cipher.InverseResult`."""
+    fig, ax = _prepare_axes(ax)
+    ax.plot([0, 1], [0, 1], "--", lw=1, color="black")
+    if result.roc is not None:
+        fpr, tpr = result.roc
+        auc = result.summary.get("pooled_auc", float("nan"))
+        ax.plot(fpr, tpr, lw=2, color=color,
+                label=label or f"{result.method}: AUC={auc:.3f}")
+    ax.set_xlabel("false positive rate")
+    ax.set_ylabel("true positive rate")
+    ax.set_title(f"{result.dataset_name} | {result.normalization} | inverse ROC")
+    ax.legend(frameon=False, loc="lower right")
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    _finalize(fig, save)
+    return ax
+
+
+def plot_inverse_prc(result, ax=None, save=None, color="C0", label=None):
+    """Pooled precision-recall curve of a single :class:`cipher.InverseResult`."""
+    fig, ax = _prepare_axes(ax)
+    if result.prc is not None:
+        precision, recall = result.prc
+        ap = result.summary.get("pooled_average_precision", float("nan"))
+        ax.plot(recall, precision, lw=2, color=color,
+                label=label or f"{result.method}: AP={ap:.3f}")
+    ax.set_xlabel("recall")
+    ax.set_ylabel("precision")
+    ax.set_title(f"{result.dataset_name} | {result.normalization} | inverse PRC")
+    ax.legend(frameon=False, loc="lower left")
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    _finalize(fig, save)
+    return ax
+
+
+def plot_inverse_group(results, curve="roc", ax=None, save=None, color="#d62728",
+                       title=None, grid_n=1001, trace_alpha=0.55):
+    """Per-dataset traces plus a mean trace for a group of datasets (e.g. CRISPRi).
+
+    ``results`` is an iterable of :class:`cipher.InverseResult` (one per dataset).
+    Each dataset's pooled ROC (or PR) curve is drawn thin; their interpolated mean
+    is drawn as a thick black line labelled with the mean pooled AUC/AP.  Reproduces
+    the reference two-panel figure when called once per group onto side-by-side axes.
+    """
+    fig, ax = _prepare_axes(ax)
+    grid = np.linspace(0.0, 1.0, int(grid_n))
+    interps, metrics = [], []
+    for res in results:
+        curve_obj = res.roc if curve == "roc" else res.prc
+        if curve_obj is None:
+            continue
+        if curve == "roc":
+            fpr, tpr = curve_obj
+            interps.append(_interp_curve(fpr, tpr, grid))
+            metrics.append(res.summary.get("pooled_auc", np.nan))
+        else:
+            precision, recall = curve_obj
+            interps.append(_interp_curve(recall, precision, grid, monotone_end=None))
+            metrics.append(res.summary.get("pooled_average_precision", np.nan))
+        ax.plot(grid, interps[-1], lw=1.8, alpha=trace_alpha, color=color)
+
+    if curve == "roc":
+        ax.plot([0, 1], [0, 1], "--", lw=1, color="black")
+
+    metric_name = "AUC" if curve == "roc" else "AP"
+    if interps:
+        mean_curve = np.mean(np.vstack(interps), axis=0)
+        mean_metric = float(np.nanmean(metrics))
+        ax.plot(grid, mean_curve, lw=4, color="black",
+                label=f"mean {metric_name}={mean_metric:.3f}")
+        ax.legend(frameon=False, loc="lower right" if curve == "roc" else "upper right")
+
+    if curve == "roc":
+        ax.set_xlabel("false positive rate")
+        ax.set_ylabel("true positive rate")
+    else:
+        ax.set_xlabel("recall")
+        ax.set_ylabel("precision")
+    ax.set_title(title or (f"{metric_name} traces + mean" if title is None else title))
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    _finalize(fig, save)
+    return ax

@@ -57,9 +57,10 @@ conda env create -f environment.yaml
 
 The public API is exposed at the top level of the `cipher` package. The six
 normalization modes are `raw`, `log1p`, `frequency`, `libsize10k`, `log1CP10k`,
-and `pflog` (see `cipher.NORMALIZATION_MODES`). The reverse solvers are
+and `pflog` (see `cipher.NORMALIZATION_MODES`). The linear reverse solvers are
 `matched_filter` (the default — no matrix inverse, robust when there are fewer
-control cells than genes), `pinv`, `ridge`, and `lstsq`.
+control cells than genes), `pinv`, `ridge`, and `lstsq`; the strongest inverse is
+the empirical-Bayes `posterior_inverse` (see 1.2b).
 
 ### (0) Precompute to disk, then load
 
@@ -139,6 +140,47 @@ res.save("path/to/output_dir")          # writes <dataset>_reverse_<norm>_<metho
 `cipher.reverse_from_precomputed(...)` runs the same from a preprocessed
 directory. With the `[bayes]` extra, `cipher.bayesian_reverse(Sigma, delta_x)`
 fits a horseshoe prior and returns posterior inclusion probabilities.
+
+### (1.2b) Posterior inverse — `InverseResult`
+
+The strongest inverse solver is the **fullH_diag posterior**: it whitens `dx` by
+its per-perturbation sampling covariance (`lambda/n0 + projected_var/nu`), fits a
+prior variance by empirical Bayes, and scores each gene by its posterior
+perturbation strength (or a single-effect PIP). It runs on the artifacts written
+by `preprocess_dataset` (needs `save_mean_var=True`, the default) and is scored
+with pooled ROC / precision-recall curves.
+
+```python
+import cipher
+
+res = cipher.posterior_inverse_from_precomputed(
+    "path/to/output_dir", "log1CP10k",
+    method="posterior",         # "posterior" (default) or "pip"
+)
+res.summary["pooled_auc"]                 # pooled one-vs-rest ROC-AUC
+res.summary["mean_per_pert_auc"]          # mean over perturbations
+res.summary["pooled_average_precision"]   # pooled AP (precision-recall)
+res.roc, res.prc                          # (fpr, tpr), (precision, recall) for plotting
+
+# or in memory straight from an .h5ad (moderate datasets):
+res = cipher.posterior_inverse_prediction("path/to/perturbseq.h5ad",
+                                          normalization="log1CP10k", method="posterior")
+```
+
+To reproduce the paper's per-dataset **CRISPRi vs CRISPRa** ROC/PR figure, run the
+inverse for each dataset, group with `cipher.dataset_group(name)`, and draw each
+group with `cipher.plotting.plot_inverse_group` (thin per-dataset traces + a mean
+trace):
+
+```python
+import matplotlib.pyplot as plt
+from cipher import plotting
+
+results = {"CRISPRi": [...], "CRISPRa": [...]}   # InverseResult per dataset, by group
+fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+plotting.plot_inverse_group(results["CRISPRi"], curve="roc", ax=axes[0], color="#d62728")
+plotting.plot_inverse_group(results["CRISPRa"], curve="roc", ax=axes[1], color="#1f77b4")
+```
 
 ### (2) Condition drivers — `DriverResult`
 

@@ -53,6 +53,15 @@ from .reverse import (
     ReverseResult,
 )
 from .driver import condition_drivers, condition_drivers_from_matrices, DriverResult
+from .inverse import (
+    posterior_inverse_from_precomputed,
+    posterior_inverse_prediction,
+    build_model,
+    fit_tau2,
+    dataset_group,
+    InverseResult,
+    PosteriorInverseModel,
+)
 from .preprocess import preprocess_dataset, PreprocessConfig
 from .io import load_precomputed, list_modes, PrecomputedMode
 
@@ -75,6 +84,9 @@ __all__ = [
     "reverse_prediction", "reverse_from_precomputed", "bayesian_reverse", "ReverseResult",
     # driver
     "condition_drivers", "condition_drivers_from_matrices", "DriverResult",
+    # inverse (fullH_diag posterior)
+    "posterior_inverse_from_precomputed", "posterior_inverse_prediction",
+    "build_model", "fit_tau2", "dataset_group", "InverseResult", "PosteriorInverseModel",
     # preprocess / io
     "preprocess_dataset", "PreprocessConfig",
     "load_precomputed", "list_modes", "PrecomputedMode",
