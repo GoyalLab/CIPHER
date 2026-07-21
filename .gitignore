@@ -1,9 +1,30 @@
 .conda
 .ipynb_checkpoints
-.h5ad
+*.h5ad
 .tmp
 output
 .logs
 *.egg-info
 __pycache__
 data
+*.bak/
+scratch/
+.*.sh
+
+# --- benchmarks: large assets are downloaded, never committed ---
+# resources/ is fetched by benchmarks/setup_resources.py, EXCEPT gene_alias_to_symbol.pkl
+# which has no upstream source (custom HGNC-derived) and so must stay in git.
+benchmarks/resources/*
+!benchmarks/resources/gene_alias_to_symbol.pkl
+# Vendored model demos, figures, images and logs are not needed to reproduce the
+# benchmarks (only the importable model code is), so they stay out of the tree.
+benchmarks/models/*/demo/
+benchmarks/models/*/demos/
+benchmarks/models/*/img/
+benchmarks/models/*/figures/
+benchmarks/models/*/logs/
+# models/ holds the vendored baseline source (~40MB) and IS tracked — it carries local
+# patches that upstream does not have. Pretrained checkpoints are NOT tracked:
+# scGPT's best_model.pt alone is 196MB and GitHub rejects files >100MB.
+benchmarks/models/**/pretrained_models/
+benchmarks/results/

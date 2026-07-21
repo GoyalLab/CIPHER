@@ -1,0 +1,10 @@
+**/__pycache__/
+*.egg-info/
+*.py[cod]
+scouter-info/
+.ipynb_checkpoints/
+dist
+build
+MANIFEST.in
+.DS_Store
+demo/.DS_Store

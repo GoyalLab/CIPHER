@@ -30,6 +30,10 @@ dependencies = [
 plot = ["matplotlib>=3.6"]           # cipher.plotting helpers
 bayes = ["pymc>=5.0"]                 # bayesian_reverse (horseshoe)
 dev = ["pytest>=7.0", "matplotlib>=3.6"]
+# benchmarks/: the CIPHER + linear_mean drivers and setup_resources.py. The deep-learning
+# baselines (GEARS, scGPT, scLAMBDA, scouter, GenePert) each need their own environment —
+# see benchmarks/conda_envs/*.yml.
+benchmarks = ["scanpy>=1.9", "scikit-learn>=1.2", "matplotlib>=3.6"]
 
 [project.urls]
 Homepage = "https://github.com/GoyalLab/CIPHER"
