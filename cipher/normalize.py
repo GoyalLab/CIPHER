@@ -167,9 +167,10 @@ def fit_pflog_alpha(X0_raw, gene_names=None):
         alpha = 1.0
         return alpha, 1.0 / (4.0 * alpha), meanvar_df, pd.DataFrame()
 
+    # Diagnostic binning (returned for plots only) — it does NOT feed the fit.
     order = np.argsort(mu_u)
-    mu_u, var_u = mu_u[order], var_u[order]
-    log_mu = np.log10(mu_u)
+    mu_s, var_s = mu_u[order], var_u[order]
+    log_mu = np.log10(mu_s)
     edges = np.linspace(np.min(log_mu), np.max(log_mu), PFLOG_N_BINS + 1)
     rows = []
     for i in range(PFLOG_N_BINS):
@@ -178,27 +179,44 @@ def fit_pflog_alpha(X0_raw, gene_names=None):
         if np.sum(m) < PFLOG_MIN_GENES_PER_BIN:
             continue
         rows.append({"bin": i, "n_genes": int(np.sum(m)),
-                     "mu_bin": float(np.mean(mu_u[m])), "var_bin": float(np.mean(var_u[m]))})
+                     "mu_bin": float(np.mean(mu_s[m])), "var_bin": float(np.mean(var_s[m]))})
     bin_df = pd.DataFrame(rows)
-    if len(bin_df) >= 3:
-        mu_fit = bin_df["mu_bin"].to_numpy(np.float64)
-        var_fit = bin_df["var_bin"].to_numpy(np.float64)
-    else:
-        mu_fit, var_fit = mu_u, var_u
 
-    x = mu_fit ** 2
-    y = var_fit - mu_fit
+    # Fit alpha over the FULL range of used genes (no binning / tail-dropping), matching
+    # the reference NB fit: least-squares through the origin of (var - mu) vs mu**2.
+    alpha = _alpha_from_meanvar(mu_u, var_u)
+    return alpha, float(1.0 / (4.0 * alpha)), meanvar_df, bin_df
+
+
+def _alpha_from_meanvar(mu, var):
+    """Least-squares NB dispersion ``alpha`` in ``Var = mu + alpha*mu**2`` over every
+    gene with ``mu>0 & var>0`` (no binning, no expression cutoff)."""
+    mu = np.asarray(mu, dtype=np.float64)
+    var = np.asarray(var, dtype=np.float64)
+    good = np.isfinite(mu) & np.isfinite(var) & (mu > 0) & (var > 0)
+    x = mu[good] ** 2
+    y = var[good] - mu[good]
     finite = np.isfinite(x) & np.isfinite(y) & (x > 0)
     if np.sum(finite) >= 3:
         alpha = float(np.sum(x[finite] * y[finite]) / max(np.sum(x[finite] * x[finite]), 1e-30))
     else:
         alpha = 1.0
     if not np.isfinite(alpha) or alpha <= 0:
-        ratios = (y[finite] / np.maximum(x[finite], 1e-30))
+        ratios = y[finite] / np.maximum(x[finite], 1e-30)
         ratios = ratios[np.isfinite(ratios) & (ratios > 0)]
         alpha = float(np.median(ratios)) if ratios.size else 1.0
-    alpha = float(np.clip(alpha, PFLOG_MIN_ALPHA, PFLOG_MAX_ALPHA))
-    return alpha, float(1.0 / (4.0 * alpha)), meanvar_df, bin_df
+    return float(np.clip(alpha, PFLOG_MIN_ALPHA, PFLOG_MAX_ALPHA))
+
+
+def fit_pflog_alpha_from_meanvar(mean, var):
+    """Fit ``(alpha, pseudocount)`` from precomputed per-gene control mean & variance.
+
+    Use this when the full-gene (un-filtered) control mean/variance are already
+    available, so the dispersion is estimated over the *whole* expression range
+    rather than only the genes surviving the expression cutoff.
+    """
+    alpha = _alpha_from_meanvar(mean, var)
+    return alpha, float(1.0 / (4.0 * alpha))
 
 
 def pflog_row_centers(X_filtered_rows, pseudocount):
@@ -233,11 +251,14 @@ def transform_pflog(X_chunk, center_rows, pseudocount):
 # --------------------------------------------------------------------------- #
 # convenience dense dispatcher (used by the in-memory forward/reverse path)
 # --------------------------------------------------------------------------- #
-def normalize_matrix(X, mode="log1p", libsize=None, pseudocount=None, pflog_center=None):
+def normalize_matrix(X, mode="raw", libsize=None, pseudocount=None, pflog_center=None):
     """Normalize a raw matrix with ``mode`` and return a dense float32 array.
 
-    For ``pflog`` you must pass ``pseudocount`` (from :func:`fit_pflog_alpha`);
-    ``pflog_center`` is computed from ``X`` if not given.
+    The default ``"raw"`` is a no-op (CIPHER's default). When a normalization *is*
+    wanted, ``"pflog"`` is the recommended, variance-stabilizing choice for the
+    covariance model — pass its ``pseudocount`` (from :func:`fit_pflog_alpha` or
+    :attr:`cipher.Dataset.pflog_pseudocount`); ``pflog_center`` is computed from ``X``
+    if not given.
     """
     if mode == "pflog":
         if pseudocount is None:

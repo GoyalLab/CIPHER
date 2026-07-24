@@ -22,6 +22,7 @@ from .normalize import (
     NORMALIZATION_MODES,
     normalize_matrix,
     fit_pflog_alpha,
+    fit_pflog_alpha_from_meanvar,
     library_size,
     mean_var,
 )
@@ -58,10 +59,12 @@ from .inverse import (
     posterior_inverse_prediction,
     build_model,
     fit_tau2,
+    recover_u,
     dataset_group,
     InverseResult,
     PosteriorInverseModel,
 )
+from .identify import identify_perturbations, identify_lfc, IdentificationResult
 from .preprocess import preprocess_dataset, PreprocessConfig
 from .io import load_precomputed, list_modes, PrecomputedMode
 
@@ -70,7 +73,8 @@ __all__ = [
     # data
     "Dataset", "load_dataset", "resolve_perturbation_key", "infer_target_gene",
     # normalize
-    "NORMALIZATION_MODES", "normalize_matrix", "fit_pflog_alpha", "library_size", "mean_var",
+    "NORMALIZATION_MODES", "normalize_matrix", "fit_pflog_alpha",
+    "fit_pflog_alpha_from_meanvar", "library_size", "mean_var",
     # covariance
     "compute_covariance", "null_covariance", "meanfield_covariance",
     "shuffled_covariance", "zinb_covariance",
@@ -86,7 +90,10 @@ __all__ = [
     "condition_drivers", "condition_drivers_from_matrices", "DriverResult",
     # inverse (fullH_diag posterior)
     "posterior_inverse_from_precomputed", "posterior_inverse_prediction",
-    "build_model", "fit_tau2", "dataset_group", "InverseResult", "PosteriorInverseModel",
+    "build_model", "fit_tau2", "recover_u", "dataset_group",
+    "InverseResult", "PosteriorInverseModel",
+    # identification (which perturbation/drug a held-out replicate belongs to)
+    "identify_perturbations", "identify_lfc", "IdentificationResult",
     # preprocess / io
     "preprocess_dataset", "PreprocessConfig",
     "load_precomputed", "list_modes", "PrecomputedMode",

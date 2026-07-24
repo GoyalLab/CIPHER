@@ -10,6 +10,8 @@ data
 *.bak/
 scratch/
 .*.sh
+revision/
+todo.md
 
 # --- benchmarks: large assets are downloaded, never committed ---
 # resources/ is fetched by benchmarks/setup_resources.py, EXCEPT gene_alias_to_symbol.pkl

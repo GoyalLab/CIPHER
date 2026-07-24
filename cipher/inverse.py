@@ -196,17 +196,43 @@ def fit_tau2(model, dx, batch=PERT_BATCH, plateau=True, progress=False):
 # --------------------------------------------------------------------------- #
 # scoring
 # --------------------------------------------------------------------------- #
+def posterior_mean_batch(model, dx_batch, row_start, row_end, tau2):
+    """Signed per-gene posterior perturbation vector ``u*`` for a batch (shape (b, p)).
+
+    This is the ridge-regularised intervention estimate in gene space,
+    ``u* = V @ [ d / (d^2 + 1/tau2) * z ]`` — the same quantity :func:`posterior_scores_batch`
+    takes the (uncertainty-inflated) magnitude of, exposed here with its sign so it can be
+    used as a perturbation *signature* (e.g. for clustering compounds).
+    """
+    d, z = model.batch_terms(dx_batch, row_start, row_end)
+    post_var_eig = 1.0 / np.maximum(d * d + 1.0 / tau2, 1e-12)
+    post_mean_eig = d * post_var_eig * z
+    return post_mean_eig @ model.V.T
+
+
 def posterior_scores_batch(model, dx_batch, row_start, row_end, tau2):
     """Per-gene posterior score ``max(|mean+std|, |mean-std|)`` for a batch."""
-    d, z = model.batch_terms(dx_batch, row_start, row_end)
-    d2 = d * d
-    post_var_eig = 1.0 / np.maximum(d2 + 1.0 / tau2, 1e-12)
-    post_mean_eig = d * post_var_eig * z
-    post_mean = post_mean_eig @ model.V.T
-    post_var_diag = post_var_eig @ model.V2.T
-    post_std = np.sqrt(np.maximum(post_var_diag, 0.0))
+    d, _ = model.batch_terms(dx_batch, row_start, row_end)
+    post_var_eig = 1.0 / np.maximum(d * d + 1.0 / tau2, 1e-12)
+    post_mean = posterior_mean_batch(model, dx_batch, row_start, row_end, tau2)
+    post_std = np.sqrt(np.maximum(post_var_eig @ model.V2.T, 0.0))
     score = np.maximum(np.abs(post_mean + post_std), np.abs(post_mean - post_std))
     return _nan0(score)
+
+
+def recover_u(model, dx, tau2, batch=PERT_BATCH):
+    """Signed posterior intervention vectors ``u*`` for every row of ``dx`` (shape (n, p)).
+
+    ``dx`` is ``(n_perturbations, p)`` mean shifts; returns one signed gene-space
+    perturbation vector per row (see :func:`posterior_mean_batch`).
+    """
+    dx = np.asarray(dx, dtype=np.float64)
+    n = dx.shape[0]
+    out = np.empty_like(dx)
+    for a in range(0, n, batch):
+        b = min(a + batch, n)
+        out[a:b] = posterior_mean_batch(model, dx[a:b], a, b, tau2)
+    return out
 
 
 def pip_scores_batch(model, dx_batch, row_start, row_end, tau2):
@@ -423,7 +449,7 @@ def _read_n0(h5):
 
 
 def posterior_inverse_prediction(
-    data, normalization: str = "log1p", method: str = "posterior",
+    data, normalization: str = "raw", method: str = "posterior",
     tau2: float | None = None, plateau: bool = True,
     negatives_per_pert: int = ROC_NEGATIVES_PER_PERT, seed: int = 0,
     batch: int = PERT_BATCH, cov_max_cells: int | None = 10000,
@@ -437,16 +463,14 @@ def posterior_inverse_prediction(
     :func:`posterior_inverse_from_precomputed`).
     """
     from .data import Dataset, load_dataset
-    from .normalize import normalize_matrix, library_size, fit_pflog_alpha, mean_var
+    from .normalize import normalize_matrix, library_size, mean_var
     from .covariance import compute_covariance
     from .utils import stable_seed
 
     ds = data if isinstance(data, Dataset) else load_dataset(data, **load_kwargs)
     ds_name = ds.name
     control_raw = ds.control_matrix(dense=True)
-    pseudocount = None
-    if normalization == "pflog":
-        _, pseudocount, _, _ = fit_pflog_alpha(control_raw, ds.gene_names)
+    pseudocount = ds.pflog_pseudocount if normalization == "pflog" else None
 
     def _norm(X):
         return normalize_matrix(X, normalization, libsize=library_size(X), pseudocount=pseudocount)

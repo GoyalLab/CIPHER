@@ -157,6 +157,10 @@ class Dataset:
     control_mask: np.ndarray
     stats: dict = field(default_factory=dict)
     name: str = "dataset"
+    #: per-gene control mean/variance over ALL genes before the expression filter,
+    #: used to fit the pflog dispersion across the whole expression range.
+    control_full_mean: Optional[np.ndarray] = None
+    control_full_var: Optional[np.ndarray] = None
 
     @property
     def n_genes(self) -> int:
@@ -165,6 +169,20 @@ class Dataset:
     @property
     def n_perturbations(self) -> int:
         return len(self.perturbations)
+
+    @property
+    def pflog_alpha(self) -> float:
+        """NB dispersion for pflog, fit over the FULL (un-filtered) control gene set."""
+        from .normalize import _alpha_from_meanvar, fit_pflog_alpha
+        if self.control_full_mean is not None and self.control_full_var is not None:
+            return _alpha_from_meanvar(self.control_full_mean, self.control_full_var)
+        # fallback: fit from the (filtered) control matrix if full stats are absent
+        return fit_pflog_alpha(self.control_matrix(dense=False), self.gene_names)[0]
+
+    @property
+    def pflog_pseudocount(self) -> float:
+        """pflog pseudocount ``1/(4*alpha)`` from :attr:`pflog_alpha`."""
+        return float(1.0 / (4.0 * self.pflog_alpha))
 
     def control_matrix(self, dense: bool = True):
         """Raw expression of control cells (``dense`` -> ndarray)."""
@@ -226,17 +244,20 @@ def load_dataset(
     if control_rows.size < 2:
         raise ValueError(f"Only {control_rows.size} control cells for {control_label!r}.")
 
+    # full-gene control mean/variance (ALL genes, before any expression filter) — kept so
+    # the pflog dispersion can be fit over the whole expression range, not just kept genes.
+    from .normalize import mean_var as _mean_var
+    control_full_mean, control_full_var = _mean_var(adata.X[control_rows, :])
+
     # gene expression cutoff
     if cutoff_source == "control":
-        cutoff_rows = control_rows
+        gene_mean = np.nan_to_num(np.asarray(control_full_mean, dtype=np.float64))
     elif cutoff_source == "all":
-        cutoff_rows = np.arange(adata.n_obs)
+        Xc = adata.X
+        gene_mean = np.nan_to_num((np.asarray(Xc.mean(axis=0)).ravel() if issparse(Xc)
+                     else np.asarray(Xc).mean(axis=0)).astype(np.float64))
     else:
         raise ValueError("cutoff_source must be 'control' or 'all'.")
-    Xc = adata.X[cutoff_rows, :]
-    gene_mean = (np.asarray(Xc.mean(axis=0)).ravel() if issparse(Xc)
-                 else np.asarray(Xc).mean(axis=0)).astype(np.float64)
-    gene_mean = np.nan_to_num(gene_mean)
     expressed = set(gene_names_all[gene_mean >= expression_threshold].tolist())
 
     # perturbation selection
@@ -276,4 +297,6 @@ def load_dataset(
     return Dataset(adata=adata, pert_key=pert_key, control_label=str(control_label),
                    gene_names=gene_names, perturbations=selected_perts,
                    target_genes=selected_targets, target_gene_indices=target_indices,
-                   control_mask=control_mask, stats=stats, name=_Path(str(data_path)).stem)
+                   control_mask=control_mask, stats=stats, name=_Path(str(data_path)).stem,
+                   control_full_mean=np.asarray(control_full_mean, dtype=np.float64),
+                   control_full_var=np.asarray(control_full_var, dtype=np.float64))

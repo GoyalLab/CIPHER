@@ -44,7 +44,6 @@ from .normalize import (
     transform_zero_preserving,
     transform_pflog,
     pflog_row_centers,
-    fit_pflog_alpha,
     library_size,
     mean_var,
     WORK_DTYPE,
@@ -383,11 +382,12 @@ def preprocess_dataset(data_path, out_root, modes=None, config=None,
             skipped_modes.append(mode)
             continue
 
-        # pflog dispersion is fit once from the full raw control matrix
+        # pflog dispersion is fit once over the FULL (un-filtered) control gene set
         pc = None
         if mode == "pflog":
             if pseudocount is None:
-                pflog_alpha, pseudocount, _, _ = fit_pflog_alpha(control_raw, gene_names)
+                pflog_alpha = ds.pflog_alpha
+                pseudocount = ds.pflog_pseudocount
             pc = pseudocount
 
         # covariance design matrix from (optionally subsampled) control cells

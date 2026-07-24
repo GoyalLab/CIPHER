@@ -23,7 +23,7 @@ import pandas as pd
 from tqdm.auto import tqdm
 
 from .data import Dataset, load_dataset
-from .normalize import normalize_matrix, library_size, fit_pflog_alpha
+from .normalize import normalize_matrix, library_size
 from .covariance import compute_covariance, null_covariance
 from .core import forward_fit, forward_metrics, gene_holdout_masks, FORWARD_METRICS
 from .utils import ensure_dir, stable_seed
@@ -115,7 +115,7 @@ def _build_result(rows, ds_name, normalization, holdout_frac, nulls):
 
 def forward_prediction(
     data,
-    normalization: str = "log1p",
+    normalization: str = "raw",
     nulls=("meanfield", "shuffled"),
     holdout_frac: float = 0.0,
     max_perturbations: int | None = None,
@@ -161,9 +161,8 @@ def forward_prediction(
     split_rng = np.random.default_rng(stable_seed(split_seed, f"{ds_name}:{normalization}"))
 
     control_raw = ds.control_matrix(dense=True)   # ALL control cells
-    pseudocount = None
-    if normalization == "pflog":
-        _, pseudocount, _, _ = fit_pflog_alpha(control_raw, ds.gene_names)
+    # pflog dispersion is fit over the FULL (un-filtered) control gene set (see Dataset).
+    pseudocount = ds.pflog_pseudocount if normalization == "pflog" else None
 
     def _norm(X):
         return normalize_matrix(X, normalization, libsize=library_size(X), pseudocount=pseudocount)

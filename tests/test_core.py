@@ -175,3 +175,30 @@ def test_fit_pflog_alpha_positive(control_counts):
     assert pc == pytest.approx(1.0 / (4.0 * alpha))
     assert "genewise_alpha" in meanvar_df.columns
     assert len(meanvar_df) == control_counts.shape[1]
+
+
+def test_fit_pflog_alpha_uses_full_range_not_binned():
+    """alpha is the full-range least-squares NB fit (no bin-mean / tail dropping),
+    matching the reference sum(x*y)/sum(x*x) over every gene with mu>0 & var>0."""
+    from cipher.normalize import fit_pflog_alpha_from_meanvar
+    rng = np.random.default_rng(1)
+    mu = 10 ** rng.uniform(-3, 2.5, 3000)      # spans low -> high expression
+    var = mu + 0.5 * mu ** 2                    # true alpha = 0.5, exactly
+    alpha, pc = fit_pflog_alpha_from_meanvar(mu, var)
+    # closed-form LS through the origin of (var-mu) vs mu**2 over ALL genes
+    x, y = mu ** 2, var - mu
+    ref = float(np.sum(x * y) / np.sum(x * x))
+    assert alpha == pytest.approx(ref, rel=1e-9)
+    assert alpha == pytest.approx(0.5, rel=1e-6)   # recovers the true dispersion
+    assert pc == pytest.approx(1.0 / (4.0 * alpha))
+
+
+def test_dataset_pflog_uses_unfiltered_gene_set(h5ad_path, synth):
+    """Dataset caches full-gene control mean/var so pflog alpha spans the whole
+    expression range, independent of the expression cutoff."""
+    import cipher
+    ds = cipher.load_dataset(h5ad_path, expression_threshold=0.0, min_samples=5)
+    assert ds.control_full_mean is not None
+    assert len(ds.control_full_mean) == synth.n_genes == len(ds.control_full_var)
+    assert np.isfinite(ds.pflog_alpha) and ds.pflog_alpha > 0
+    assert ds.pflog_pseudocount == pytest.approx(1.0 / (4.0 * ds.pflog_alpha))

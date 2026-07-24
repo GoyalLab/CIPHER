@@ -18,7 +18,7 @@ import pandas as pd
 from tqdm.auto import tqdm
 
 from .data import Dataset, load_dataset
-from .normalize import normalize_matrix, library_size, fit_pflog_alpha
+from .normalize import normalize_matrix, library_size
 from .covariance import compute_covariance
 from .core import reverse_operator, rank_of, top_k_hit, one_vs_rest_auc
 from .utils import ensure_dir, stable_seed
@@ -94,7 +94,7 @@ def _inverse_to_reverse(inv, top_k: int) -> "ReverseResult":
 
 def reverse_prediction(
     data,
-    normalization: str = "log1p",
+    normalization: str = "raw",
     method: str = "posterior",
     top_k: int = 10,
     max_perturbations: int | None = None,
@@ -132,10 +132,7 @@ def reverse_prediction(
     rng_seed = stable_seed(seed, ds_name)
 
     control_raw = ds.control_matrix(dense=True)   # ALL control cells
-
-    pseudocount = None
-    if normalization == "pflog":
-        _, pseudocount, _, _ = fit_pflog_alpha(control_raw, ds.gene_names)
+    pseudocount = ds.pflog_pseudocount if normalization == "pflog" else None
 
     def _norm(X):
         return normalize_matrix(X, normalization, libsize=library_size(X), pseudocount=pseudocount)

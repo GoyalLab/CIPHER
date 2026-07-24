@@ -37,7 +37,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     fw = sub.add_parser("forward", help="Forward prediction (transcriptomic shift)")
     _add_common(fw)
-    fw.add_argument("--normalization", default="log1p")
+    fw.add_argument("--normalization", default="raw")
     fw.add_argument("--nulls", nargs="*", default=["meanfield", "shuffled"])
     fw.add_argument("--holdout-frac", type=float, default=0.0,
                     help="fraction of genes held out for out-of-sample evaluation (0.5 in the paper)")
@@ -47,7 +47,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     rv = sub.add_parser("reverse", help="Reverse prediction (recover perturbed gene)")
     _add_common(rv)
-    rv.add_argument("--normalization", default="log1p")
+    rv.add_argument("--normalization", default="raw")
     rv.add_argument("--method", default="posterior",
                     choices=["posterior", "pip", "matched_filter", "pinv", "ridge", "lstsq"])
     rv.add_argument("--top-k", type=int, default=10)
@@ -62,7 +62,7 @@ def build_parser() -> argparse.ArgumentParser:
                     help="value of condition-key marking controls")
     dr.add_argument("--condition", default=None, dest="condition_value",
                     help="value marking the condition (default: all non-control)")
-    dr.add_argument("--normalization", default="log1p")
+    dr.add_argument("--normalization", default="raw")
     dr.add_argument("--method", default="matched_filter",
                     choices=["matched_filter", "posterior", "pip", "pinv", "ridge", "lstsq"])
     dr.add_argument("--top", type=int, default=25, help="rows to print")

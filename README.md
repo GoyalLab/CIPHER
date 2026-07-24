@@ -68,7 +68,10 @@ pytest                      # or: python -m pytest
 The public API is exposed at the top level of the `cipher` package. Each
 application below takes a Perturb-seq `.h5ad` file and returns a result object —
 **start here**. The six normalization modes are `raw`, `log1p`, `frequency`,
-`libsize10k`, `log1CP10k`, and `pflog` (see `cipher.NORMALIZATION_MODES`). Driver
+`libsize10k`, `log1CP10k`, and `pflog` (see `cipher.NORMALIZATION_MODES`). Every
+entry point **defaults to `raw`** (no transform); when a normalization is wanted,
+**`pflog`** is the recommended, variance-stabilizing choice for the covariance
+model (its dispersion is fit over the full control expression range). Driver
 recovery (reverse prediction) defaults to the empirical-Bayes **posterior inverse**
 (the most accurate, section 3); the linear solvers `matched_filter`, `pinv`,
 `ridge`, and `lstsq` remain available as lightweight baselines. For large or
@@ -82,7 +85,7 @@ import cipher
 
 res = cipher.forward_prediction(
     "path/to/perturbseq.h5ad",
-    normalization="log1p",
+    normalization="raw",   # default; use "pflog" for variance stabilization
     nulls=("meanfield", "shuffled"),   # baseline covariance models
     holdout_frac=0.0,                  # 0.5 for out-of-sample gene holdout (paper setting)
     max_perturbations=None,            # int for a quick smoke test
@@ -106,7 +109,7 @@ import cipher
 
 res = cipher.reverse_prediction(
     "path/to/perturbseq.h5ad",
-    normalization="log1p",
+    normalization="raw",   # default; use "pflog" for variance stabilization
     method="posterior",   # posterior (default) | pip | matched_filter | pinv | ridge | lstsq
     top_k=10,
 )
@@ -139,7 +142,7 @@ import cipher
 # End-to-end from an .h5ad (moderate datasets):
 res = cipher.posterior_inverse_prediction(
     "path/to/perturbseq.h5ad",
-    normalization="log1CP10k",
+    normalization="pflog",
     method="posterior",         # "posterior" (default) or "pip"
 )
 res.summary["pooled_auc"]                 # pooled one-vs-rest ROC-AUC
@@ -148,7 +151,7 @@ res.summary["pooled_average_precision"]   # pooled AP (precision-recall)
 res.roc, res.prc                          # (fpr, tpr), (precision, recall) for plotting
 
 # For large datasets, precompute once (section 5) then run from disk:
-res = cipher.posterior_inverse_from_precomputed("path/to/output_dir", "log1CP10k",
+res = cipher.posterior_inverse_from_precomputed("path/to/output_dir", "pflog",
                                                 method="posterior")
 ```
 
@@ -182,7 +185,7 @@ res = cipher.condition_drivers(
     condition_key="stim",       # obs column grouping the cells
     control_value="rest",       # value marking control cells
     condition_value="stim",     # None => every non-control cell
-    normalization="log1p",
+    normalization="raw",   # default; use "pflog" for variance stabilization
     method="matched_filter",    # default; also "posterior"/"pip" (fullH_diag inverse), "pinv"/"ridge"
 )
 res.top(20)                     # top-ranked candidate driver genes
@@ -191,7 +194,7 @@ res.save("path/to/output_dir") # writes <name>_drivers_<norm>_<method>.csv
 # Or directly from two raw (cells x genes) matrices sharing a gene axis:
 res = cipher.condition_drivers_from_matrices(
     control_X, condition_X, gene_names,
-    normalization="log1p",
+    normalization="raw",   # default; use "pflog" for variance stabilization
     method="matched_filter",
 )
 ```
