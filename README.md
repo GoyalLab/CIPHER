@@ -55,6 +55,14 @@ the paper) can be built from the pinned spec:
 conda env create -f environment.yaml
 ```
 
+Installing does not run the test suite. To verify the install works, install the
+`[dev]` extra and run the tests (a fast synthetic suite, no datasets or GPU needed):
+
+```bash
+pip install -e ".[dev]"
+pytest                      # or: python -m pytest
+```
+
 ## Quickstart (Python)
 
 The public API is exposed at the top level of the `cipher` package. Each
