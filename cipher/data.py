@@ -300,3 +300,35 @@ def load_dataset(
                    control_mask=control_mask, stats=stats, name=_Path(str(data_path)).stem,
                    control_full_mean=np.asarray(control_full_mean, dtype=np.float64),
                    control_full_var=np.asarray(control_full_var, dtype=np.float64))
+
+
+def _subset_dataset_genes(ds: Dataset, shared, shared_pos) -> Dataset:
+    """Return a copy of ``ds`` restricted (and reordered) to ``shared`` gene names."""
+    adata = ds.adata[:, list(shared)].copy()
+    gene_names = np.asarray(adata.var_names.astype(str))
+    tgi = np.array([shared_pos.get(str(tg), -1) for tg in ds.target_genes], dtype=np.int64)
+    stats = dict(ds.stats)
+    stats["n_genes"] = int(len(gene_names))
+    return Dataset(adata=adata, pert_key=ds.pert_key, control_label=ds.control_label,
+                   gene_names=gene_names, perturbations=list(ds.perturbations),
+                   target_genes=list(ds.target_genes), target_gene_indices=tgi,
+                   control_mask=ds.control_mask, stats=stats, name=ds.name,
+                   control_full_mean=ds.control_full_mean, control_full_var=ds.control_full_var)
+
+
+def load_matched_datasets(path_a, path_b, **load_kwargs):
+    """Load two Perturb-seq datasets restricted to their **shared gene set**.
+
+    Both returned :class:`Dataset` objects share the same ``gene_names`` (in a common
+    order), so a covariance estimated on one can be applied to the other's shifts —
+    the cross-dataset covariance-transfer analysis.  ``load_kwargs`` are forwarded to
+    :func:`load_dataset` for both datasets.
+    """
+    ds_a = load_dataset(path_a, **load_kwargs)
+    ds_b = load_dataset(path_b, **load_kwargs)
+    set_b = set(map(str, ds_b.gene_names))
+    shared = [g for g in map(str, ds_a.gene_names) if g in set_b]   # ds_a order
+    if len(shared) < 2:
+        raise ValueError(f"Only {len(shared)} shared genes between {ds_a.name} and {ds_b.name}.")
+    shared_pos = {g: i for i, g in enumerate(shared)}
+    return _subset_dataset_genes(ds_a, shared, shared_pos), _subset_dataset_genes(ds_b, shared, shared_pos)

@@ -14,21 +14,54 @@ from scipy.sparse import issparse
 from .utils import to_dense
 
 
-def compute_covariance(X, ridge_abs: float = 0.0, ridge_rel: float = 0.0) -> np.ndarray:
-    """Gene-gene covariance of a (cells x genes) matrix, optionally ridged.
+def _convex_shrink(Sigma: np.ndarray, shrink: float) -> np.ndarray:
+    """Convex shrinkage toward a scaled identity: ``(1-s)*Sigma + s*mean_diag*I``.
+
+    Unlike an additive ridge, this is a proper Ledoit-Wolf-style convex combination
+    that keeps the total variance (trace) roughly fixed; it matches the reference
+    ``_shrink_cov`` used to stabilise the control and within-group covariances.
+    """
+    diag = np.diag(Sigma)
+    good = np.isfinite(diag) & (diag > 0)
+    d = float(np.mean(diag[good])) if np.any(good) else 1.0
+    return (1.0 - shrink) * Sigma + shrink * d * np.eye(Sigma.shape[0])
+
+
+def compute_covariance(X, ridge_abs: float = 0.0, ridge_rel: float = 0.0,
+                       shrink: float = 0.0) -> np.ndarray:
+    """Gene-gene covariance of a (cells x genes) matrix, optionally ridged/shrunk.
 
     ``ridge_abs`` and ``ridge_rel`` add ``ridge_abs + ridge_rel * mean_diag`` to
     the diagonal, which stabilises the inverse used by the reverse problem.
+    ``shrink`` (in ``[0, 1]``) applies convex shrinkage toward a scaled identity
+    *before* the ridge — ``(1-shrink)*Sigma + shrink*mean_diag*I`` — matching the
+    reference ``_shrink_cov`` (e.g. ``1e-3`` for the control Sigma, ``5e-2`` for
+    within-group covariances).
     """
     X = to_dense(X).astype(np.float64, copy=False)
     Sigma = np.cov(X, rowvar=False)
     Sigma = np.atleast_2d(Sigma)
+    if shrink:
+        Sigma = _convex_shrink(Sigma, float(shrink))
     if ridge_abs or ridge_rel:
         diag = np.diag(Sigma)
         good = np.isfinite(diag) & (diag > 0)
         scale = float(np.mean(diag[good])) if np.any(good) else 1.0
         Sigma = Sigma + (ridge_abs + ridge_rel * scale) * np.eye(Sigma.shape[0])
     return Sigma
+
+
+def within_group_covariance(X, shrink: float = 0.0) -> np.ndarray:
+    """Convex-shrunk gene-gene covariance of one perturbation/drug's cells.
+
+    This is the full within-group covariance ``Sd`` used by the identification
+    noise model (projected as ``diag(V^T Sd V)``), as opposed to the gene-diagonal
+    variance approximation.  Returns ``None`` if there are fewer than 2 cells.
+    """
+    Xd = to_dense(X).astype(np.float64, copy=False)
+    if Xd.shape[0] < 2:
+        return None
+    return compute_covariance(Xd, shrink=shrink)
 
 
 def meanfield_covariance(X, seed: int = 0) -> np.ndarray:

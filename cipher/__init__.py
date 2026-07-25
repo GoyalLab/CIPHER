@@ -17,7 +17,7 @@ from __future__ import annotations
 
 __version__ = "0.1.0"
 
-from .data import Dataset, load_dataset, resolve_perturbation_key, infer_target_gene
+from .data import Dataset, load_dataset, load_matched_datasets, resolve_perturbation_key, infer_target_gene
 from .normalize import (
     NORMALIZATION_MODES,
     normalize_matrix,
@@ -25,9 +25,11 @@ from .normalize import (
     fit_pflog_alpha_from_meanvar,
     library_size,
     mean_var,
+    select_hvg_dispersion,
 )
 from .covariance import (
     compute_covariance,
+    within_group_covariance,
     null_covariance,
     meanfield_covariance,
     shuffled_covariance,
@@ -61,6 +63,8 @@ from .inverse import (
     fit_tau2,
     recover_u,
     dataset_group,
+    project_diag_cov,
+    identification_eigvar,
     InverseResult,
     PosteriorInverseModel,
 )
@@ -71,13 +75,13 @@ from .io import load_precomputed, list_modes, PrecomputedMode
 __all__ = [
     "__version__",
     # data
-    "Dataset", "load_dataset", "resolve_perturbation_key", "infer_target_gene",
+    "Dataset", "load_dataset", "load_matched_datasets", "resolve_perturbation_key", "infer_target_gene",
     # normalize
     "NORMALIZATION_MODES", "normalize_matrix", "fit_pflog_alpha",
-    "fit_pflog_alpha_from_meanvar", "library_size", "mean_var",
+    "fit_pflog_alpha_from_meanvar", "library_size", "mean_var", "select_hvg_dispersion",
     # covariance
-    "compute_covariance", "null_covariance", "meanfield_covariance",
-    "shuffled_covariance", "zinb_covariance",
+    "compute_covariance", "within_group_covariance", "null_covariance",
+    "meanfield_covariance", "shuffled_covariance", "zinb_covariance",
     # core
     "forward_predict", "forward_fit", "forward_metrics", "gene_holdout_masks",
     "FORWARD_METRICS", "reverse_scores", "reverse_operator",
@@ -91,6 +95,7 @@ __all__ = [
     # inverse (fullH_diag posterior)
     "posterior_inverse_from_precomputed", "posterior_inverse_prediction",
     "build_model", "fit_tau2", "recover_u", "dataset_group",
+    "project_diag_cov", "identification_eigvar",
     "InverseResult", "PosteriorInverseModel",
     # identification (which perturbation/drug a held-out replicate belongs to)
     "identify_perturbations", "identify_lfc", "IdentificationResult",

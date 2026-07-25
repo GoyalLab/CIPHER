@@ -114,13 +114,62 @@ class PosteriorInverseModel:
         return d, z
 
 
-def build_model(Sigma, var_pert, n0, nu, control_var=None, symmetrize=True):
-    """Build a :class:`PosteriorInverseModel` from a covariance and per-perturbation variances.
+def project_diag_cov(V, cov):
+    """Diagonal of the eigenbasis projection of a gene-gene covariance: ``diag(V^T cov V)``.
+
+    Computed without forming the full ``V^T cov V`` product.  ``cov`` may be a single
+    ``(p, p)`` matrix (returns ``(p,)``) or a stack ``(m, p, p)`` (returns ``(m, p)``).
+    This is the *full* within-group projected variance used by the ``within_cov`` noise
+    model, as opposed to the gene-diagonal ``var @ (V*V)`` approximation.
+    """
+    V = np.asarray(V, dtype=np.float64)
+    cov = np.asarray(cov, dtype=np.float64)
+    if cov.ndim == 2:
+        return np.einsum("ik,ik->k", V, cov @ V, optimize=True)
+    return np.stack([np.einsum("ik,ik->k", V, c @ V, optimize=True) for c in cov])
+
+
+def identification_eigvar(model, h_mode, n_query=None, var=None, cov=None):
+    """Build the test-side projected noise ``pert_eigvar_test`` matching a ``build_model``
+    ``h_mode``, to pass to :func:`identify_perturbations`.
+
+    * ``"sigma_count"`` — needs ``n_query``; returns the control eigenvalues broadcast.
+    * ``"within_cov"`` — needs ``cov`` ``(n_query, p, p)``; returns ``diag(V^T Sd V)``.
+    * ``"fullh_diag"`` — needs ``var`` ``(n_query, p)``; returns ``var @ (V*V)``.
+    """
+    if h_mode == "sigma_count":
+        if n_query is None:
+            raise ValueError("sigma_count needs n_query.")
+        return np.broadcast_to(model.eigenvalues[None, :], (int(n_query), model.eigenvalues.size)).copy()
+    if h_mode == "within_cov":
+        if cov is None:
+            raise ValueError("within_cov needs cov (n_query, p, p).")
+        return np.maximum(project_diag_cov(model.V, cov), 0.0)
+    if h_mode == "fullh_diag":
+        if var is None:
+            raise ValueError("fullh_diag needs var (n_query, p).")
+        return np.maximum(np.asarray(var, dtype=np.float64) @ model.V2, 0.0)
+    raise ValueError(f"Unknown h_mode {h_mode!r}.")
+
+
+def build_model(Sigma, var_pert, n0, nu, control_var=None, symmetrize=True,
+                h_mode="fullh_diag", pert_cov=None):
+    """Build a :class:`PosteriorInverseModel` from a covariance and per-perturbation noise.
 
     ``var_pert`` is ``(n_pert, p)`` gene-wise variances of the perturbed cells
     (the gene-diagonal approximation of the projected variance).  If ``var_pert``
     is ``None`` and ``control_var`` is given, the control variance is used for every
     perturbation.
+
+    ``h_mode`` selects how the per-eigenmode noise ``pert_eigvar`` is built:
+
+    * ``"fullh_diag"`` (default) — gene-diagonal projection ``var_pert @ (V*V)``.
+    * ``"sigma_count"`` — the control eigenvalues themselves (``pert_eigvar_k = lambda_k``),
+      giving ``H = lambda*(1/n0 + 1/nu)``; ``var_pert`` is ignored.  Matches the
+      reference gene-perturbation identification.
+    * ``"within_cov"`` — full projection ``diag(V^T Sd V)`` of each perturbation's own
+      covariance ``pert_cov[i]`` (shape ``(n_pert, p, p)``); matches the reference drug
+      identification.  Off-diagonal within-group covariance is retained.
     """
     Sigma = _nan0(np.asarray(Sigma, dtype=np.float64))
     p = Sigma.shape[0]
@@ -133,14 +182,23 @@ def build_model(Sigma, var_pert, n0, nu, control_var=None, symmetrize=True):
 
     nu = np.asarray(nu, dtype=np.float64).reshape(-1)
     n_pert = nu.shape[0]
-    if var_pert is not None:
-        var_pert = np.maximum(_nan0(np.asarray(var_pert, dtype=np.float64)), 0.0)
-    elif control_var is not None:
-        cv = np.maximum(_nan0(np.asarray(control_var, dtype=np.float64)).reshape(-1), 0.0)
-        var_pert = np.broadcast_to(cv[None, :], (n_pert, p)).copy()
+    if h_mode == "sigma_count":
+        pert_eigvar = np.broadcast_to(eigenvalues[None, :], (n_pert, p)).copy()
+    elif h_mode == "within_cov":
+        if pert_cov is None:
+            raise ValueError("h_mode='within_cov' requires pert_cov (n_pert, p, p).")
+        pert_eigvar = np.maximum(_nan0(project_diag_cov(V, pert_cov)), 0.0)
+    elif h_mode == "fullh_diag":
+        if var_pert is not None:
+            var_pert = np.maximum(_nan0(np.asarray(var_pert, dtype=np.float64)), 0.0)
+        elif control_var is not None:
+            cv = np.maximum(_nan0(np.asarray(control_var, dtype=np.float64)).reshape(-1), 0.0)
+            var_pert = np.broadcast_to(cv[None, :], (n_pert, p)).copy()
+        else:
+            raise ValueError("Need var_pert (or control_var) to build the fullH_diag model.")
+        pert_eigvar = np.maximum(_nan0(var_pert @ V2), 0.0)
     else:
-        raise ValueError("Need var_pert (or control_var) to build the fullH_diag model.")
-    pert_eigvar = np.maximum(_nan0(var_pert @ V2), 0.0)
+        raise ValueError(f"Unknown h_mode {h_mode!r}; choose fullh_diag/sigma_count/within_cov.")
 
     positive = eigenvalues[eigenvalues > 0]
     scale = float(np.median(positive) / n0) if positive.size else 1.0

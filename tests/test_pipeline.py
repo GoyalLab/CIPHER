@@ -94,3 +94,32 @@ def test_cli_forward_returns_zero(tmp_path, h5ad_path):
         "--expression-threshold", "0.0", "--max-perturbations", "5",
     ])
     assert rc == 0
+
+
+def test_load_matched_datasets_shares_gene_axis(tmp_path):
+    """load_matched_datasets restricts two datasets to their shared gene set so a
+    covariance from one can be applied to the other (cross-dataset transfer)."""
+    import numpy as np, pandas as pd, anndata as ad, cipher
+
+    def _make(genes, seed):
+        r = np.random.default_rng(seed)
+        X = [r.poisson(2.0, (200, len(genes))).astype("float32")]
+        labels = ["control"] * 200
+        for g in range(6):
+            Y = r.poisson(2.0, (40, len(genes))).astype("float32"); Y[:, g] += 5
+            X.append(Y); labels += [genes[g]] * 40
+        return ad.AnnData(np.vstack(X), obs=pd.DataFrame({"perturbation": labels}),
+                          var=pd.DataFrame(index=genes))
+
+    gA = [f"G{i}" for i in range(50)]
+    gB = [f"G{i}" for i in range(15, 65)]           # overlap G15..G49 == 35 genes
+    _make(gA, 1).write_h5ad(str(tmp_path / "A.h5ad"))
+    _make(gB, 2).write_h5ad(str(tmp_path / "B.h5ad"))
+    ds_a, ds_b = cipher.load_matched_datasets(
+        str(tmp_path / "A.h5ad"), str(tmp_path / "B.h5ad"),
+        expression_threshold=0.0, min_samples=5)
+    assert list(ds_a.gene_names) == list(ds_b.gene_names)   # identical, ordered gene axis
+    assert ds_a.n_genes == ds_b.n_genes == 35
+    # a covariance from A applies to B's shifts on the shared axis
+    SigA = cipher.compute_covariance(ds_a.control_matrix())
+    assert SigA.shape == (35, 35)

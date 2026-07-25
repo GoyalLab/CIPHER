@@ -82,6 +82,24 @@ def mean_var(X):
             np.nan_to_num(var, nan=0.0, posinf=0.0, neginf=0.0))
 
 
+def select_hvg_dispersion(X, n_top: int, force_include=None) -> np.ndarray:
+    """Indices of the top-``n_top`` highly-variable genes by raw dispersion.
+
+    Dispersion is ``var / max(mean, 1e-8)`` on the (raw) counts, matching the
+    reference HVG selection used before building the covariance for identification.
+    ``force_include`` gene indices are always kept (e.g. perturbation targets).
+    Returns a sorted index array.
+    """
+    mean, var = mean_var(X)
+    disp = var / np.maximum(mean, 1e-8)
+    order = np.argsort(disp)[::-1]
+    n_top = int(min(n_top, X.shape[1]))
+    keep = set(int(i) for i in order[:n_top])
+    if force_include is not None:
+        keep.update(int(i) for i in np.asarray(force_include).ravel() if 0 <= int(i) < X.shape[1])
+    return np.array(sorted(keep), dtype=np.int64)
+
+
 # --------------------------------------------------------------------------- #
 # zero-preserving transforms (raw / log1p / frequency / libsize10k / log1CP10k)
 # --------------------------------------------------------------------------- #
