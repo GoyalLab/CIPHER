@@ -40,14 +40,17 @@ DEFAULT_DATA_DIR = os.environ.get("CIPHER_DATA_DIR", "./")
 DATASETS = [
     {
         "name": "SrivatsanTrapnell2020_sciplex3.h5ad",
-        "size": 2213070032,
-        "md5": "9b0155a44f12c2b60b018ea5afb19267",
-        "url": "https://ndownloader.figshare.com/files/39324305",
-        "source": "figshare 10.6084/m9.figshare.22122701 (biolord curation of sci-Plex 3, "
-                  "Srivatsan et al. 2020)",
-        # sci-Plex is a chemical screen: load with
-        #   cipher.load_dataset(path, pert_key="product_name", require_target_in_var=False)
-        "note": "chemical screen; use pert_key='product_name', require_target_in_var=False",
+        "size": 2526631614,
+        "md5": "c9e70629505d98c7ca1a837f62b14e89",
+        "url": "https://zenodo.org/api/records/13350497/files/SrivatsanTrapnell2020_sciplex3.h5ad/content",
+        "source": "scPerturb (Zenodo 10.5281/zenodo.13350497 v1.4; concept DOI 10.5281/zenodo.7041849) — "
+                  "full-gene sci-Plex 3 (Srivatsan et al. 2020): 799,317 cells x 110,983 genes. "
+                  "Byte-identical earlier copy: figshare file 43381398 (md5 d1f51b9f...).",
+        # sci-Plex is a chemical screen; the drug column is obs['perturbation'] (control label 'control'):
+        #   cipher.load_dataset(path, pert_key="perturbation", require_target_in_var=False)
+        # NOT the 2,000-gene biolord subset (figshare 39324305) — CIPHER needs the full gene-gene
+        # covariance, which the biolord HVG curation strips out.
+        "note": "chemical screen; use pert_key='perturbation', require_target_in_var=False",
     },
 ]
 
