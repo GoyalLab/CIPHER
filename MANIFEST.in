@@ -1,0 +1,16 @@
+# Keep the distribution lean: ship ONLY the `cipher` package (+ standard metadata).
+# Everything below is benchmarking / figure-reproduction material that lives in the
+# GitHub repo but must NOT be part of the PyPI package.
+prune benchmarks
+prune benchmarks.bak
+prune notebooks
+prune notebooks.bak
+prune resources
+prune scratch
+prune revision
+prune tests
+exclude todo.md
+exclude MEMORY.md
+# never ship data / large artifacts
+global-exclude *.h5ad *.h5 *.npy *.npz *.loom *.mtx *.mtx.gz *.pkl
+global-exclude *.ipynb
