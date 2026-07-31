@@ -47,6 +47,7 @@ METHOD_COLOR = {"lr": "#1F77B4", "lfc": "#7E5FA4", "mf": "#9E9E9E"}
 # cross-section state populated by the compute functions
 results = None
 Sp = p_lr = p_mf = p_lfc = p_SC = None
+p_rows = None   # per-dataset CRISPRi/a identification table (macro source for H/I)
 Sd = md_ = d_lr = d_mf = d_lfc = d_SC = None
 
 
@@ -111,34 +112,6 @@ def build_split_stats(ds, seed=SEED, min_cells=8, cov_max_cells=10000,
     return out
 
 
-def _lr_scores(model, S, pev, tau2=1.0):
-    """(n_queries, n_candidates) likelihood scores for every candidate.
-
-    ``cipher.identify_perturbations`` keeps only the per-query rank/margin, but the published
-    composite panels (H/I, L/M) need each candidate's score. This rebuilds the same quantity
-    from the packaged primitives (``recover_u`` plus the model's eigenbasis) -- it is exactly
-    the expression the panel-J drug ranking already uses, evaluated for every query rather
-    than one -- so nothing has to change inside the installed package.
-    """
-    V, lam = model.V, model.eigenvalues
-    pred_eig = (recover_u(model, S["dx_train"], tau2) @ V) * lam[None, :]
-    nu = np.asarray(S["n_test"], dtype=np.float64).reshape(-1)
-    h_test = np.maximum(lam[None, :] / model.n0 + np.asarray(pev, dtype=np.float64) / nu[:, None],
-                        model.ridge)
-    z = np.asarray(S["dx_test"], dtype=np.float64) @ V
-    out = np.empty((z.shape[0], pred_eig.shape[0]), dtype=np.float64)
-    for i in range(z.shape[0]):
-        diff = pred_eig - z[i][None, :]
-        out[i] = -0.5 * np.sum(diff * diff / h_test[i][None, :], axis=1)
-    return out
-
-
-def _lfc_scores(S):
-    """(n_queries, n_candidates) cosine scores, mirroring ``cipher.identify_lfc``."""
-    def _unit(Mx):
-        Mx = np.asarray(Mx, dtype=np.float64)
-        return Mx / np.maximum(np.linalg.norm(Mx, axis=1, keepdims=True), 1e-12)
-    return _unit(S["lfc_test"]) @ _unit(S["lfc_train"]).T
 
 
 def _margin_scores(r):
@@ -156,33 +129,6 @@ def _margin_scores(r):
         return np.nan, np.nan
     return M.roc_auc(c[fin], m[fin]), M.average_precision(c[fin], m[fin])
 
-
-def _pooled_from_scores(scores):
-    """Composite one-vs-rest AUROC / AP / curves over every (query, candidate) pair.
-
-    Each query contributes its true candidate as the single positive and the rest as
-    negatives. ``identify_*`` is called without ``true_index``, so query i's true candidate
-    is candidate i.
-    """
-    s = np.asarray(scores, dtype=np.float64)
-    y = np.zeros(s.shape, dtype=np.int64)
-    n = min(s.shape)
-    y[np.arange(n), np.arange(n)] = 1
-    # Standardise within each query before pooling. Each query's log-likelihoods sit on their
-    # own scale (they depend on that query's dx magnitude and sampling variance), so pooling
-    # them raw lets one query's worst candidate outrank another query's true candidate and the
-    # composite curve collapses to chance. Per-query z-scores keep every query's ranking intact
-    # while putting them on a common axis.
-    mu = np.nanmean(s, axis=1, keepdims=True)
-    sd = np.nanstd(s, axis=1, keepdims=True)
-    s = (s - mu) / np.where(sd > 0, sd, 1.0)
-    fs, fy = s.ravel(), y.ravel()
-    fin = np.isfinite(fs)
-    fs, fy = fs[fin], fy[fin]
-    if fs.size < 2 or not (0 < fy.sum() < fy.size):
-        return np.nan, np.nan, None, None
-    return (M.roc_auc(fy, fs), M.average_precision(fy, fs),
-            M.roc_curve(fy, fs), M.pr_curve(fy, fs))
 
 
 def run_identify(S, name, h_mode="sigma_count"):
@@ -206,10 +152,7 @@ def run_identify(S, name, h_mode="sigma_count"):
     r_mf = identify_perturbations(mf, S["dx_train"], S["dx_test"], tau2=1.0, labels=S["labels"],
                                   pert_eigvar_test=pev_mf, nu_test=S["n_test"], topk=K, dataset_name=name + "_MF")
     r_lfc = identify_lfc(S["lfc_train"], S["lfc_test"], labels=S["labels"], topk=K, dataset_name=name + "_LFC")
-    # Candidate score matrices for the composite (pooled one-vs-rest) panels; the packaged
-    # results carry only per-query rank/margin, so these are rebuilt here from the same inputs.
-    SC = {"lr": _lr_scores(m, S, pev), "mf": _lr_scores(mf, S, pev_mf), "lfc": _lfc_scores(S)}
-    return m, r_lr, r_mf, r_lfc, SC
+    return m, r_lr, r_mf, r_lfc, None
 
 
 def _plot_identify(r_lr, r_mf, r_lfc, SC, title):
@@ -335,6 +278,51 @@ def run_crispri():
         print(f"  {lab:8s} acc1={r.acc1:.4f}  top5={r.topk_acc[5]:.4f}")
 
 
+def run_crispri_all():
+    """Per-dataset CRISPRi/a identification across every CRISPRi/a dataset.
+
+    Published panels H/I are the **macro average** over the CRISPRi/a datasets, not a single
+    dataset: the reference reports per-dataset correctness-vs-margin AUROC/AP and then averages
+    them. Any one dataset is far below that mean -- TianKampmann2021_CRISPRi scores ~0.06 top-1
+    in the reference itself (177 candidates, only 437 control cells) -- so reporting it alone
+    understates H/I and can even let the LFC baseline appear to win. Results are cached per
+    dataset so re-runs are cheap.
+    """
+    global p_rows
+    rows = []
+    for f in sorted(glob.glob(os.path.join(DATA_DIR, "*.h5ad"))):
+        name = os.path.basename(f)[:-5]
+        if dataset_group(name) not in ("CRISPRi", "CRISPRa"):
+            continue
+        cache = os.path.join(OUTDIR, "identify_cache",
+                             f"{name}__{NORM}_t{str(CRISPRI_THRESH).replace('.', 'p')}.npz")
+        if CDEF_CACHE and os.path.exists(cache):
+            z = np.load(cache, allow_pickle=True)
+            rows.append({k: (float(z[k]) if k != "dataset" else str(z[k])) for k in z.files})
+            print(f"{name:40s} [cached] lr_auc={float(z['lr_auc']):.3f}")
+            continue
+        try:
+            ds = load_dataset(f, expression_threshold=CRISPRI_THRESH, min_samples=100)
+            S = build_split_stats(ds, sigma_ridge=CRISPRI_SIGMA_RIDGE)
+            if len(S["labels"]) < 5:
+                print(f"SKIP {name}: only {len(S['labels'])} candidates"); continue
+            _m, r_lr, r_mf, r_lfc, _sc = run_identify(S, ds.name, h_mode="sigma_count")
+            rec = {"dataset": name, "n_cand": float(len(S["labels"])), "acc1": r_lr.acc1}
+            for key, r in (("lr", r_lr), ("mf", r_mf), ("lfc", r_lfc)):
+                au, ap = _margin_scores(r)
+                rec[f"{key}_auc"], rec[f"{key}_ap"] = au, ap
+            rows.append(rec)
+            if CDEF_CACHE:
+                os.makedirs(os.path.dirname(cache), exist_ok=True)
+                np.savez_compressed(cache, **rec)
+            print(f"{name:40s} n_cand={len(S['labels']):4d} acc1={r_lr.acc1:.4f} "
+                  f"lr_auc={rec['lr_auc']:.3f} lfc_auc={rec['lfc_auc']:.3f}")
+        except Exception as e:  # noqa: BLE001
+            print("SKIP", name, repr(e))
+    p_rows = pd.DataFrame(rows)
+    return p_rows
+
+
 def plot_crispri():
     """H (CRISPRi/a) -- top-k / margin ROC / margin PR for CIPHER vs LFC."""
     fig = _plot_identify(p_lr, p_mf, p_lfc, p_SC, "CRISPRi perturbation ID")
@@ -384,11 +372,20 @@ def plot_sciplex(query="Fulvestrant"):
 def panels_hi_composite():
     """H/I + L/M values -- composite one-vs-rest AUROC/AUPRC for CIPHER vs mean-field vs LFC."""
     rows = []
-    for grp, (rl, rm, rf) in {"CRISPRi/a": (p_lr, p_mf, p_lfc), "sci-Plex": (d_lr, d_mf, d_lfc)}.items():
-        for meth, r in [("linear response", rl), ("linear response (mean-field)", rm),
-                        ("log fold change", rf)]:
-            au, ap = _margin_scores(r)
-            rows.append(dict(group=grp, method=meth, AUROC=au, AUPRC=ap))
+    # CRISPRi/a: macro average of the per-dataset AUROC/AP (the published aggregation).
+    if p_rows is not None and len(p_rows):
+        for meth, key in [("linear response", "lr"), ("linear response (mean-field)", "mf"),
+                          ("log fold change", "lfc")]:
+            rows.append(dict(group="CRISPRi/a", method=meth,
+                             AUROC=float(np.nanmean(p_rows[f"{key}_auc"])),
+                             AUPRC=float(np.nanmean(p_rows[f"{key}_ap"]))))
+        print(f"CRISPRi/a macro over {p_rows['lr_auc'].notna().sum()} datasets "
+              f"(mean acc1={np.nanmean(p_rows['acc1']):.3f})")
+    # sci-Plex is a single dataset, so its panel values are that dataset's curves.
+    for meth, r in [("linear response", d_lr), ("linear response (mean-field)", d_mf),
+                    ("log fold change", d_lfc)]:
+        au, ap = _margin_scores(r)
+        rows.append(dict(group="sci-Plex", method=meth, AUROC=au, AUPRC=ap))
     comp = pd.DataFrame(rows); print(comp.to_string(index=False))
     fig, ax = plt.subplots(1, 2, figsize=(12, 4.5))
     for a, metric in zip(ax, ["AUROC", "AUPRC"]):
