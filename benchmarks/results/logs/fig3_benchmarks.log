@@ -1,0 +1,7 @@
+loaded cached benchmark metrics: 195,900 metric rows, 22,904 centroid rows
+[PCC] raw-space mean by model: GenePert=0.576, scouter=0.571, CIPHER=0.552, scLAMBDA=0.481, scGPT=0.477, linear_mean_raw=0.280, GEARS=0.166
+[Spearman] raw-space mean by model: scGPT=0.505, scouter=0.474, GenePert=0.448, scLAMBDA=0.437, CIPHER=0.433, linear_mean_raw=0.249, GEARS=0.144
+[Cosine] raw-space mean by model: CIPHER=0.574, GenePert=0.570, scouter=0.563, scLAMBDA=0.476, scGPT=0.472, linear_mean_raw=0.281, GEARS=0.167
+[L2] raw-space mean by model: GEARS=75.138, linear_mean_raw=72.796, scGPT=67.807, scLAMBDA=63.538, scouter=62.046, CIPHER=61.838, GenePert=61.085
+[MSE] raw-space mean by model: GEARS=3.055, linear_mean_raw=2.744, scGPT=2.497, scLAMBDA=2.171, scouter=2.162, GenePert=2.060, CIPHER=1.908
+[centroid] mean by model: scouter=0.775, GenePert=0.718, scGPT=0.712, CIPHER=0.711, scLAMBDA=0.710, GEARS=0.538, linear_mean_raw=0.500

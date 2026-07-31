@@ -105,6 +105,17 @@ Each writes `<output-dir>/<MODEL>/<dataset>/results.pkl` with per-perturbation
 `cipher.forward_predict` and `cipher.forward_metrics` — rather than re-implementing the
 method, so the benchmark always scores the shipped code.
 
+### Plotting — Fig. 3 J–N
+
+[`notebooks/main/fig3_benchmarks.ipynb`](../notebooks/main/fig3_benchmarks.ipynb) turns these
+per-perturbation `results.pkl` files into the published method-comparison violins (Pearson,
+cosine, L2, MSE, Spearman, and Systema centroid accuracy). Log-space methods are mapped back
+to raw counts with the first-order Taylor correction `Δ_raw ≈ control · Δ_log` so every method
+is scored in the raw space CIPHER predicts in natively. The scoring pass (reading every pkl) is
+run **once** into a small cached CSV under `resources/repro/fig3_benchmarks/`, which the notebook
+then loads; point the regeneration at this results root and the splits with
+`CIPHER_BENCH_ROOT=<output-dir>` and `CIPHER_BENCH_SPLITS=<splits-dir>`.
+
 ## 5. Model size — `parameters.csv`
 
 [`parameters.csv`](parameters.csv) records how many parameters each benchmarked model actually
