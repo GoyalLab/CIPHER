@@ -30,3 +30,6 @@ benchmarks/models/*/logs/
 # scGPT's best_model.pt alone is 196MB and GitHub rejects files >100MB.
 benchmarks/models/**/pretrained_models/
 benchmarks/results/
+resources/repro/
+notebooks/suppl/*/
+notebooks/suppl/resources/
