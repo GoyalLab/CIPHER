@@ -27,9 +27,14 @@ from cipher import metrics as M
 # --- config (injected by the notebook) ---
 DATA_DIR = None
 OUTDIR = None
-NORM = "raw"
+# Global cutoffs, named as in the other engines so a notebook setting the shared names injects
+# them here too. The paper's filter is "mean_control_ge_1p0" on raw counts.
+NORMALIZATION = "raw"
+NORM = NORMALIZATION
+EXPRESSION_THRESHOLD = 1.0
+MIN_SAMPLES = 100
 SEED = 0
-CRISPRI_THRESH = 1.0
+CRISPRI_THRESH = EXPRESSION_THRESHOLD
 CRISPRI_SIGMA_RIDGE = 1e-8
 DRUG_HVG = 1000
 DRUG_SIGMA_SHRINK = 1e-3
@@ -48,6 +53,7 @@ METHOD_COLOR = {"lr": "#1F77B4", "lfc": "#7E5FA4", "mf": "#9E9E9E"}
 results = None
 Sp = p_lr = p_mf = p_lfc = p_SC = None
 p_rows = None   # per-dataset CRISPRi/a identification table (macro source for H/I)
+_CURVES = {}    # dataset -> per-method ROC/PR arrays, used to draw the composite H/I curves
 Sd = md_ = d_lr = d_mf = d_lfc = d_SC = None
 
 
@@ -270,7 +276,7 @@ def run_crispri():
     """CRISPRi perturbation identification (Tian2021 CRISPRi) -- CIPHER vs mean-field vs LFC."""
     global Sp, p_lr, p_mf, p_lfc, p_SC
     ds_p = load_dataset(os.path.join(DATA_DIR, "TianKampmann2021_CRISPRi.h5ad"),
-                        expression_threshold=CRISPRI_THRESH, min_samples=100)
+                        expression_threshold=EXPRESSION_THRESHOLD, min_samples=MIN_SAMPLES)
     Sp = build_split_stats(ds_p, sigma_ridge=CRISPRI_SIGMA_RIDGE)
     _mp, p_lr, p_mf, p_lfc, p_SC = run_identify(Sp, ds_p.name, h_mode="sigma_count")
     print(f"{len(Sp['labels'])} candidate perturbations (chance acc1={1/len(Sp['labels']):.4f})")
@@ -298,23 +304,34 @@ def run_crispri_all():
                              f"{name}__{NORM}_t{str(CRISPRI_THRESH).replace('.', 'p')}.npz")
         if CDEF_CACHE and os.path.exists(cache):
             z = np.load(cache, allow_pickle=True)
-            rows.append({k: (float(z[k]) if k != "dataset" else str(z[k])) for k in z.files})
+            scal = [k for k in z.files if not (k.endswith("roc0") or k.endswith("roc1")
+                                               or k.endswith("prc0") or k.endswith("prc1"))]
+            rows.append({k: (float(z[k]) if k != "dataset" else str(z[k])) for k in scal})
+            _CURVES[name] = {k: z[k] for k in z.files if k not in scal}
             print(f"{name:40s} [cached] lr_auc={float(z['lr_auc']):.3f}")
             continue
         try:
-            ds = load_dataset(f, expression_threshold=CRISPRI_THRESH, min_samples=100)
+            ds = load_dataset(f, expression_threshold=EXPRESSION_THRESHOLD, min_samples=MIN_SAMPLES)
             S = build_split_stats(ds, sigma_ridge=CRISPRI_SIGMA_RIDGE)
             if len(S["labels"]) < 5:
                 print(f"SKIP {name}: only {len(S['labels'])} candidates"); continue
             _m, r_lr, r_mf, r_lfc, _sc = run_identify(S, ds.name, h_mode="sigma_count")
             rec = {"dataset": name, "n_cand": float(len(S["labels"])), "acc1": r_lr.acc1}
+            curves = {}
             for key, r in (("lr", r_lr), ("mf", r_mf), ("lfc", r_lfc)):
                 au, ap = _margin_scores(r)
                 rec[f"{key}_auc"], rec[f"{key}_ap"] = au, ap
+                # keep the curves too: H/I are published as composite ROC / PR *curves*, so the
+                # macro panel needs each dataset's curve, not only its scalar summary.
+                if r.roc is not None:
+                    curves[f"{key}_roc0"], curves[f"{key}_roc1"] = np.asarray(r.roc[0]), np.asarray(r.roc[1])
+                if r.prc is not None:
+                    curves[f"{key}_prc0"], curves[f"{key}_prc1"] = np.asarray(r.prc[0]), np.asarray(r.prc[1])
             rows.append(rec)
+            _CURVES[name] = curves
             if CDEF_CACHE:
                 os.makedirs(os.path.dirname(cache), exist_ok=True)
-                np.savez_compressed(cache, **rec)
+                np.savez_compressed(cache, **rec, **curves)
             print(f"{name:40s} n_cand={len(S['labels']):4d} acc1={r_lr.acc1:.4f} "
                   f"lr_auc={rec['lr_auc']:.3f} lfc_auc={rec['lfc_auc']:.3f}")
         except Exception as e:  # noqa: BLE001
@@ -387,9 +404,36 @@ def panels_hi_composite():
         au, ap = _margin_scores(r)
         rows.append(dict(group="sci-Plex", method=meth, AUROC=au, AUPRC=ap))
     comp = pd.DataFrame(rows); print(comp.to_string(index=False))
-    fig, ax = plt.subplots(1, 2, figsize=(12, 4.5))
-    for a, metric in zip(ax, ["AUROC", "AUPRC"]):
-        comp.pivot(index="group", columns="method", values=metric).plot(kind="bar", ax=a, rot=0)
-        a.set(ylabel=metric, title=metric); a.legend(fontsize=7)
-    fig.tight_layout(); fig.savefig(os.path.join(OUTDIR, "fig5_method_bars.svg")); plt.show()
+
+    # H and I are published as composite ROC / PR *curves* across the CRISPR datasets (CIPHER
+    # blue vs log-fold-change purple), not as a bar summary. Each dataset's curve is
+    # interpolated onto a common grid and averaged, matching how the per-dataset C-F panels
+    # build their mean trace; the legend carries the macro-averaged AUROC / AP.
+    grid = np.linspace(0.0, 1.0, 1001)
+    fig, ax = plt.subplots(1, 2, figsize=(11, 5))
+    for key, lab in [("lr", "linear response"), ("lfc", "log fold change")]:
+        roc_y, prc_y = [], []
+        for cur in _CURVES.values():
+            if f"{key}_roc0" in cur:
+                roc_y.append(np.interp(grid, np.asarray(cur[f"{key}_roc0"], float),
+                                       np.asarray(cur[f"{key}_roc1"], float)))
+            if f"{key}_prc0" in cur:
+                pr, rc = np.asarray(cur[f"{key}_prc0"], float), np.asarray(cur[f"{key}_prc1"], float)
+                o = np.argsort(rc)
+                prc_y.append(np.interp(grid, rc[o], pr[o]))
+        au = float(np.nanmean(p_rows[f"{key}_auc"])) if p_rows is not None and len(p_rows) else np.nan
+        ap = float(np.nanmean(p_rows[f"{key}_ap"])) if p_rows is not None and len(p_rows) else np.nan
+        if roc_y:
+            ax[0].plot(grid, np.nanmean(roc_y, axis=0), color=METHOD_COLOR[key], lw=2.2,
+                       label=f"{lab} {au:.3f}")
+        if prc_y:
+            ax[1].plot(grid, np.nanmean(prc_y, axis=0), color=METHOD_COLOR[key], lw=2.2,
+                       label=f"{lab} {ap:.3f}")
+    ax[0].plot([0, 1], [0, 1], "k--", lw=1)
+    ax[0].set(xlabel="false positive rate", ylabel="true positive rate", title="H   CRISPRi/a",
+              xlim=(0, 1), ylim=(0, 1))
+    ax[1].set(xlabel="recall", ylabel="precision", title="I   CRISPRi/a", xlim=(0, 1), ylim=(0, 1))
+    for a_ in ax:
+        a_.legend(fontsize=9, loc="lower right" if a_ is ax[0] else "lower left")
+    fig.tight_layout(); fig.savefig(os.path.join(OUTDIR, "fig5_panels_HI.svg")); plt.show()
     return comp
