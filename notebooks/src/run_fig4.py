@@ -22,6 +22,7 @@ import cipher
 from cipher import (load_matched_datasets, compute_covariance,
                     meanfield_covariance, shuffled_covariance,
                     forward_predict, forward_metrics)
+from cipher.data import _subset_dataset_genes
 from cipher.normalize import normalize_matrix, library_size
 
 # --- config (injected by the notebook) ---
@@ -44,13 +45,15 @@ DIFF_CT = {
     "Norman":        "NormanWeissman2019_filtered.h5ad",
     "Frangieh":      "FrangiehIzar2021_RNA.h5ad",
 }
+# Panel B pools every perturbation of both datasets in each same-cell-type comparison, so each
+# comparison contributes both directions (host <- source and source <- host); the reference
+# per-pair tables likewise carry rows for both datasets' perturbations.
 B_PAIRS = [("Tian19_neuron", "Tian21_CRISPRi"),
+           ("Tian21_CRISPRi", "Tian19_neuron"),
            ("Tian21_CRISPRa", "Tian21_CRISPRi"),
-           ("Tian21_CRISPRi", "Tian21_CRISPRa")]
-
-
-def _load_kw():
-    return dict(expression_threshold=EXPRESSION_THRESHOLD, min_samples=MIN_SAMPLES)
+           ("Tian21_CRISPRi", "Tian21_CRISPRa"),
+           ("Tian19_neuron", "Tian21_CRISPRa"),
+           ("Tian21_CRISPRa", "Tian19_neuron")]
 
 
 def _all_map():
@@ -75,6 +78,13 @@ def sigma_of(ds, kind="real", seed=SEED):
         return meanfield_covariance(Xc, seed=seed)
     if kind == "shuffled":
         return shuffled_covariance(Xc, seed=seed)
+    if kind == "random":
+        # Published panel-C "shuffled Sigma" baseline: the covariance of standard-normal noise
+        # shaped like the control matrix (reference: ``np.cov(np.random.randn(*X0.shape))``).
+        # Permuting the observed entries instead keeps their heavy-tailed value distribution,
+        # which still scores well above chance and lifts the first column off zero.
+        rng = np.random.default_rng(cipher.utils.stable_seed(seed, ds.name + ":random"))
+        return compute_covariance(rng.standard_normal(Xc.shape))
     return compute_covariance(Xc)
 
 
@@ -97,37 +107,65 @@ def matched_forward(host_ds, Sigma, source_label):
 
 
 def run_pair(host_key, src_key, seed=SEED):
-    host_ds, src_ds = load_matched_datasets(_path(host_key), _path(src_key), **_load_kw())
+    """Load a (host, source) pair on a shared, host-thresholded gene axis.
+
+    Genes are intersected *first* and the expression cut is then applied using only the
+    **host** control means (predictions are scored against the host). Thresholding each
+    dataset independently and intersecting the survivors instead collapses the axis whenever
+    one dataset is shallow -- TianKampmann2019_day7neuron keeps just 77 genes at >= 1.0, so
+    pairing it with Tian21 left a 64-gene axis rather than a transcriptome-wide one. Target
+    genes of the host's perturbations are force-kept, matching ``load_dataset``.
+    """
+    host_ds, src_ds = load_matched_datasets(_path(host_key), _path(src_key),
+                                            expression_threshold=0.0, min_samples=MIN_SAMPLES)
+    ctrl_mean = np.asarray(_norm(host_ds, host_ds.control_matrix()).mean(0)).ravel()
+    keep = ctrl_mean >= EXPRESSION_THRESHOLD
+    keep[[int(g) for g in host_ds.target_gene_indices if int(g) >= 0]] = True
+    names = np.asarray(host_ds.gene_names).astype(str)
+    shared = [g for g, k in zip(names, keep) if k]
+    if len(shared) < 2:
+        raise ValueError(f"{host_key} <- {src_key}: only {len(shared)} genes pass the host cut.")
+    pos = {g: i for i, g in enumerate(shared)}
+    host_ds = _subset_dataset_genes(host_ds, shared, pos)
+    src_ds = _subset_dataset_genes(src_ds, shared, pos)
     return dict(
         cross=matched_forward(host_ds, sigma_of(src_ds, "real"), src_key),
         self_=matched_forward(host_ds, sigma_of(host_ds, "real"), host_key + ":self"),
         mf=matched_forward(host_ds, sigma_of(src_ds, "meanfield", seed), src_key + ":mf"),
-        rand=matched_forward(host_ds, sigma_of(src_ds, "shuffled", seed), src_key + ":shuf"),
+        rand=matched_forward(host_ds, sigma_of(src_ds, "random", seed), src_key + ":rand"),
         n_shared=int(host_ds.n_genes),
     )
 
 
 def panel_b():
-    """B -- R2 with the true (same-dataset) Sigma vs a Sigma from another same-cell-type dataset."""
+    """B -- per-perturbation prediction Pearson with the true (same-dataset) Sigma vs Sigmas
+    from other same-cell-type datasets. The panel metric ("ΔR2 correlation") is the coefficient
+    of determination (r2_score) of the cross values about the same-dataset values."""
     recs = []
     for host, src in B_PAIRS:
         r = run_pair(host, src)
-        m = r["self_"][["perturbation", "r2_uncentered"]].merge(
-            r["cross"][["perturbation", "r2_uncentered"]],
+        m = r["self_"][["perturbation", "pearson"]].merge(
+            r["cross"][["perturbation", "pearson"]],
             on="perturbation", suffixes=("_true", "_cross"))
         recs.append(m.assign(pair=f"{host} vs {src}"))
         print(f"{host:14s} vs {src:14s}: {len(m):3d} perts, {r['n_shared']} shared genes")
     B = pd.concat(recs, ignore_index=True)
+    # Degenerate pairs (a shallow host leaves too few genes for a stable fit) yield NaN
+    # correlations; drop them so the scatter and the r2_score below see finite values only.
+    n_all = len(B)
+    B = B.dropna(subset=["pearson_true", "pearson_cross"]).reset_index(drop=True)
+    if len(B) < n_all:
+        print(f"dropped {n_all - len(B)} perturbations with non-finite correlations")
     fig, ax = plt.subplots(figsize=(6, 6))
     for k, g in B.groupby("pair"):
-        ax.scatter(g["r2_uncentered_true"], g["r2_uncentered_cross"], s=20, alpha=.6, label=k)
-    lims = (min(B["r2_uncentered_true"].min(), B["r2_uncentered_cross"].min(), 0), 1)
+        ax.scatter(g["pearson_true"], g["pearson_cross"], s=20, alpha=.6, label=k)
+    lims = (min(B["pearson_true"].min(), B["pearson_cross"].min(), 0), 1)
     ax.plot(lims, lims, "k--", lw=1)
-    # reference metric: coefficient of determination of the cross-dataset ΔR2 about the
-    # same-dataset ΔR2 (y=x), matching r2_score(true, cross) in the published figure.
-    r = r2_score(B["r2_uncentered_true"], B["r2_uncentered_cross"])
+    # published metric: r2_score(true, cross) -- coefficient of determination of the
+    # across-dataset values about the same-dataset values (y=x line).
+    r = r2_score(B["pearson_true"], B["pearson_cross"])
     ax.set(xlabel="ΔR2 (true Σ, same dataset)",
-           ylabel="ΔR2 (Σ from another same-cell-type dataset)",
+           ylabel="ΔR2 (across same cell-type datasets)",
            title=f"B   ΔR2 correlation = {r:.2f}", xlim=lims, ylim=lims)
     ax.legend(fontsize=8)
     fig.tight_layout(); fig.savefig(os.path.join(OUTDIR, "fig4_panelB.svg")); plt.show()

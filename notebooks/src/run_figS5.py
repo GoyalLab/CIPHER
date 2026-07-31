@@ -7,7 +7,13 @@ constants live inside each entry function; DATA_DIR / SUPPL / OUTDIR are module 
 notebook via R.__dict__.update. The inline control covariance equals cipher.compute_covariance(ridge_rel=).
 """
 import os
+import glob as _glob
 import traceback
+
+# Skip (dataset, percentile-window) combinations whose metrics CSV already exists, so a run
+# stopped by a wall-clock limit resumes instead of recomputing everything. Set False to force
+# a full recompute.
+RESUME_COMPLETED = bool(int(os.environ.get("CIPHER_FIGS5_RESUME", "1")))
 
 DATA_DIR = None
 SUPPL = None
@@ -68,6 +74,28 @@ def run_percentile_raw_partial_freq():
         if not np.isfinite(tr) or tr <= 0:
             tr = 1.0
         C += ridge * tr / C.shape[0] * np.eye(C.shape[0])
+        return C
+
+    def covariance_columns(X, cols, ridge=1e-6):
+        """Only the requested columns of the ridged gene-gene covariance.
+
+        Numerically the same as ``compute_covariance(X, ridge)[:, cols]`` but never forms the
+        full ``p x p`` matrix -- with the percentile windows keeping >30k genes that matrix is
+        ~7 GB, while the evaluation only ever reads the perturbed genes' columns
+        (``run_eval_for_pert`` uses ``Sigma[:, k]``). ``cov[:, k] = Xc.T @ Xc[:, k] / (n-1)``,
+        and the isotropic ridge only touches each column's own diagonal entry; the trace it is
+        scaled by is the sum of per-gene variances, which needs no ``p x p`` intermediate.
+        """
+        X = _to_dense(X).astype(np.float64, copy=False)
+        n, p = X.shape
+        cols = np.asarray(cols, dtype=int)
+        Xc = X - X.mean(axis=0, keepdims=True)
+        denom = max(n - 1, 1)
+        C = (Xc.T @ Xc[:, cols]) / denom                       # (p, len(cols))
+        tr = float(np.sum(np.einsum("ij,ij->j", Xc, Xc) / denom))
+        if not np.isfinite(tr) or tr <= 0:
+            tr = 1.0
+        C[cols, np.arange(cols.size)] += ridge * tr / p
         return C
 
     def normalization_mats(X):
@@ -249,6 +277,14 @@ def run_percentile_raw_partial_freq():
                 save_dir = os.path.join(out_root, base, f"min{min_pct:03d}_max{max_pct:03d}")
                 os.makedirs(save_dir, exist_ok=True)
 
+                # Resume guard: every (dataset, percentile-window) combination writes exactly one
+                # metrics CSV into its own directory, so a run that hit its wall-clock limit can be
+                # relaunched and will skip the combinations it already finished. Each compute
+                # function writes under its own out_root, so this never matches another's output.
+                if RESUME_COMPLETED and _glob.glob(os.path.join(save_dir, "*metrics_min*_max*.csv")):
+                    print(f"[resume] {base} min{min_pct:03d}_max{max_pct:03d}: already computed, skipping")
+                    continue
+
                 print(f"\n[RUN] {base} | min_pct={min_pct} max_pct={max_pct} | kept_genes={len(kept_idx)} | perts={len(perts_here)}")
 
                 # Slice control matrices/means
@@ -259,12 +295,16 @@ def run_percentile_raw_partial_freq():
                 mu0_part = mu0_part_full[kept_idx]
                 mu0_freq = mu0_freq_full[kept_idx]
 
-                # Covariances
-                Sigma_raw  = compute_covariance(X0_raw,  ridge=ridge)
-                Sigma_part = compute_covariance(X0_part, ridge=ridge)
-                Sigma_freq = compute_covariance(X0_freq, ridge=ridge)
-
                 gene_to_k = {g:i for i,g in enumerate(kept_genes)}
+
+                # Covariances -- only the perturbed genes' columns are ever read, so build just
+                # those instead of the full (kept_genes x kept_genes) matrix, which is ~7 GB at
+                # the widest percentile window. Values are unchanged; see covariance_columns().
+                need_cols = sorted({gene_to_k[p] for p in perts_here if p in gene_to_k})
+                col_of = {c: j for j, c in enumerate(need_cols)}
+                Sigma_raw  = covariance_columns(X0_raw,  need_cols, ridge=ridge)
+                Sigma_part = covariance_columns(X0_part, need_cols, ridge=ridge)
+                Sigma_freq = covariance_columns(X0_freq, need_cols, ridge=ridge)
 
                 rows = []
                 for pert in tqdm(perts_here, desc=f"{base} min{min_pct} max{max_pct}", leave=False):
@@ -284,9 +324,10 @@ def run_percentile_raw_partial_freq():
                     if k is None:
                         continue
 
-                    a_raw,  r2_raw,  p_raw,  s_raw  = run_eval_for_pert(delta_raw,  Sigma_raw,  k, lam=lam)
-                    a_part, r2_part, p_part, s_part = run_eval_for_pert(delta_part, Sigma_part, k, lam=lam)
-                    a_freq, r2_freq, p_freq, s_freq = run_eval_for_pert(delta_freq, Sigma_freq, k, lam=lam)
+                    kc = col_of[k]          # column index within the reduced covariance
+                    a_raw,  r2_raw,  p_raw,  s_raw  = run_eval_for_pert(delta_raw,  Sigma_raw,  kc, lam=lam)
+                    a_part, r2_part, p_part, s_part = run_eval_for_pert(delta_part, Sigma_part, kc, lam=lam)
+                    a_freq, r2_freq, p_freq, s_freq = run_eval_for_pert(delta_freq, Sigma_freq, kc, lam=lam)
 
                     rows.append({
                         "dataset": base,
@@ -436,6 +477,28 @@ def run_percentile_train_test():
         if not np.isfinite(tr) or tr <= 0:
             tr = 1.0
         C += ridge * tr / C.shape[0] * np.eye(C.shape[0])
+        return C
+
+    def covariance_columns(X, cols, ridge=1e-6):
+        """Only the requested columns of the ridged gene-gene covariance.
+
+        Numerically the same as ``compute_covariance(X, ridge)[:, cols]`` but never forms the
+        full ``p x p`` matrix -- with the percentile windows keeping >30k genes that matrix is
+        ~7 GB, while the evaluation only ever reads the perturbed genes' columns
+        (``run_eval_for_pert`` uses ``Sigma[:, k]``). ``cov[:, k] = Xc.T @ Xc[:, k] / (n-1)``,
+        and the isotropic ridge only touches each column's own diagonal entry; the trace it is
+        scaled by is the sum of per-gene variances, which needs no ``p x p`` intermediate.
+        """
+        X = _to_dense(X).astype(np.float64, copy=False)
+        n, p = X.shape
+        cols = np.asarray(cols, dtype=int)
+        Xc = X - X.mean(axis=0, keepdims=True)
+        denom = max(n - 1, 1)
+        C = (Xc.T @ Xc[:, cols]) / denom                       # (p, len(cols))
+        tr = float(np.sum(np.einsum("ij,ij->j", Xc, Xc) / denom))
+        if not np.isfinite(tr) or tr <= 0:
+            tr = 1.0
+        C[cols, np.arange(cols.size)] += ridge * tr / p
         return C
 
     def normalization_mats(X):
@@ -656,6 +719,14 @@ def run_percentile_train_test():
 
                 save_dir = os.path.join(out_root, base, f"min{min_pct:03d}_max{max_pct:03d}")
                 os.makedirs(save_dir, exist_ok=True)
+
+                # Resume guard: every (dataset, percentile-window) combination writes exactly one
+                # metrics CSV into its own directory, so a run that hit its wall-clock limit can be
+                # relaunched and will skip the combinations it already finished. Each compute
+                # function writes under its own out_root, so this never matches another's output.
+                if RESUME_COMPLETED and _glob.glob(os.path.join(save_dir, "*metrics_min*_max*.csv")):
+                    print(f"[resume] {base} min{min_pct:03d}_max{max_pct:03d}: already computed, skipping")
+                    continue
 
                 print(
                     f"\n[RUN] {base} | min_pct={min_pct} max_pct={max_pct} | "
@@ -1150,6 +1221,12 @@ def run_raw_only_train_test():
                 )
                 os.makedirs(save_dir, exist_ok=True)
 
+                # Resume guard (see run_percentile_raw_partial_freq): skip combinations whose
+                # metrics CSV already exists so an interrupted run picks up where it stopped.
+                if RESUME_COMPLETED and _glob.glob(os.path.join(save_dir, "*metrics_min*_max*.csv")):
+                    print(f"[resume] {base} {split_label} min{min_pct:03d}_max{max_pct:03d}: already computed, skipping")
+                    continue
+
                 print(
                     f"\n[RUN] {base} | split={split_label} | "
                     f"min_pct={min_pct} max_pct={max_pct} | "
@@ -1540,6 +1617,14 @@ def run_raw_only_all_cells():
                 save_dir = os.path.join(out_root, base, f"min{min_pct:03d}_max{max_pct:03d}")
                 os.makedirs(save_dir, exist_ok=True)
 
+                # Resume guard: every (dataset, percentile-window) combination writes exactly one
+                # metrics CSV into its own directory, so a run that hit its wall-clock limit can be
+                # relaunched and will skip the combinations it already finished. Each compute
+                # function writes under its own out_root, so this never matches another's output.
+                if RESUME_COMPLETED and _glob.glob(os.path.join(save_dir, "*metrics_min*_max*.csv")):
+                    print(f"[resume] {base} min{min_pct:03d}_max{max_pct:03d}: already computed, skipping")
+                    continue
+
                 print(
                     f"\n[RUN] {base} | min_pct={min_pct} max_pct={max_pct} | "
                     f"kept_genes={len(kept_idx)} | perts={len(perts_here)}"
@@ -1880,6 +1965,14 @@ def run_cross_norm_raw_freq():
 
                 save_dir = os.path.join(out_root, base, f"min{min_pct:03d}_max{max_pct:03d}")
                 os.makedirs(save_dir, exist_ok=True)
+
+                # Resume guard: every (dataset, percentile-window) combination writes exactly one
+                # metrics CSV into its own directory, so a run that hit its wall-clock limit can be
+                # relaunched and will skip the combinations it already finished. Each compute
+                # function writes under its own out_root, so this never matches another's output.
+                if RESUME_COMPLETED and _glob.glob(os.path.join(save_dir, "*metrics_min*_max*.csv")):
+                    print(f"[resume] {base} min{min_pct:03d}_max{max_pct:03d}: already computed, skipping")
+                    continue
 
                 print(f"\n[RUN] {base} | min_pct={min_pct} max_pct={max_pct} | kept_genes={len(kept_idx)} | perts={len(perts_here)}")
 

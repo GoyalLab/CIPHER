@@ -31,11 +31,28 @@ from cipher.normalize import normalize_matrix, library_size
 DATA_DIR = None
 OUTDIR = None
 NORMALIZATION = "raw"
-EXPRESSION_THRESHOLD = 0.1
+# 1.0 == the reference "mean_control_ge_1p0" gene filter used throughout the paper (fig3/fig5
+# both needed it to reproduce); panel G's mean ΔR2 is the same forward metric as fig3 C/D, so it
+# has to be measured on the same gene set.
+EXPRESSION_THRESHOLD = 1.0
 MIN_SAMPLES = 100
 COV_MAX_CELLS = 10000
 SEED = 0
 N_PC_HEATMAP = 10                       # top PCs shown in the B heatmaps
+# Cache the per-dataset participation ratios / response fractions / mean dR2 behind panels A/B/G.
+# That sweep re-reads every CRISPRi/a h5ad and dominates the notebook's runtime, so it is computed
+# once and reloaded afterwards; iterating on panel G then costs seconds instead of an hour.
+# Delete OUTDIR/pr_cache (or set False) to force a recompute.
+COMPUTE_CACHE = True
+# Datasets shown in published panel G (Replogle22 a/b, Nadig25 a/b, Norman19, Frangieh21,
+# Tian21 a/b, Tian19 a/b). Empty set => fit every available dataset.
+PANEL_G_DATASETS = {
+    "ReplogleWeissman2022_rpe1", "ReplogleWeissman2022_K562_essential",
+    "GSE264667_hepg2_raw_singlecell_01", "GSE264667_jurkat_raw_singlecell_01",
+    "NormanWeissman2019_filtered", "FrangiehIzar2021_RNA",
+    "TianKampmann2021_CRISPRa", "TianKampmann2021_CRISPRi",
+    "TianKampmann2019_day7neuron", "TianKampmann2019_iPSC",
+}
 A_DATASETS = ["TianKampmann2019_day7neuron", "NormanWeissman2019_filtered",
               "ReplogleWeissman2022_rpe1"]   # the three shown in panel A/B
 
@@ -81,8 +98,17 @@ def _dataset_pr(ds, seed=SEED):
             float(np.nanmean(dr2_real)) if dr2_real else np.nan)
 
 
+def _pr_cache_path(name):
+    tag = f"{NORMALIZATION}_t{str(EXPRESSION_THRESHOLD).replace('.', 'p')}"
+    return os.path.join(OUTDIR, "pr_cache", f"{name}__{tag}.npz")
+
+
 def compute_all():
-    """Compute per-perturbation participation ratios + response fractions + mean ΔR2 for all CRISPRi/a."""
+    """Per-perturbation participation ratios + response fractions + mean ΔR2 for all CRISPRi/a.
+
+    Each dataset's result is cached (see COMPUTE_CACHE); the cache key carries the normalization
+    and expression threshold so changing either recomputes rather than silently reusing.
+    """
     global pr_per_dataset, frac_per_dataset, dr2_per_dataset
     pr_per_dataset, frac_per_dataset, dr2_per_dataset = {}, {}, {}
     files = sorted(glob.glob(os.path.join(DATA_DIR, "*.h5ad")))
@@ -90,10 +116,22 @@ def compute_all():
         name = os.path.basename(f)[:-5]
         if dataset_group(name) not in ("CRISPRi", "CRISPRa"):
             continue
+        cache = _pr_cache_path(name)
+        if COMPUTE_CACHE and os.path.exists(cache):
+            z = np.load(cache)
+            pr, fr, dr2 = z["pr"], z["frac"], float(z["dr2"])
+            pr_per_dataset[name] = pr; frac_per_dataset[name] = fr; dr2_per_dataset[name] = dr2
+            print(f"{name:40s} n_pert={len(pr):4d} mean PR={np.nanmean(pr):.2f} "
+                  f"mean ΔR2={dr2:.3f} [cached]")
+            continue
         try:
             ds = load_dataset(f, expression_threshold=EXPRESSION_THRESHOLD, min_samples=MIN_SAMPLES)
             pr, fr, dr2 = _dataset_pr(ds)
             pr_per_dataset[name] = pr; frac_per_dataset[name] = fr; dr2_per_dataset[name] = dr2
+            if COMPUTE_CACHE:
+                os.makedirs(os.path.dirname(cache), exist_ok=True)
+                np.savez_compressed(cache, pr=np.asarray(pr), frac=np.asarray(fr),
+                                    dr2=np.asarray(float(dr2)))
             print(f"{name:40s} n_pert={len(pr):4d} mean PR={np.nanmean(pr):.2f} mean ΔR2={dr2:.3f}")
         except Exception as e:  # noqa: BLE001
             print("SKIP", name, repr(e))
@@ -115,8 +153,15 @@ def panel_ab():
 
 
 def panel_g():
-    """G -- mean participation ratio vs mean forward ΔR2 per dataset."""
-    names = [d for d in pr_per_dataset if np.isfinite(dr2_per_dataset.get(d, np.nan))]
+    """G -- mean participation ratio vs mean forward ΔR2 per dataset.
+
+    Restricted to the datasets the published panel plots (Replogle22 a/b, Nadig25 a/b,
+    Norman19, Frangieh21, Tian21 a/b, Tian19 a/b); fitting every available dataset instead
+    pulls in the many Marson/XAtlas/CRISPRa sets the panel does not show and changes the fit.
+    """
+    names = [d for d in pr_per_dataset
+             if np.isfinite(dr2_per_dataset.get(d, np.nan))
+             and (not PANEL_G_DATASETS or d in PANEL_G_DATASETS)]
     x = np.array([dr2_per_dataset[d] for d in names])
     y = np.array([np.nanmean(pr_per_dataset[d]) for d in names])
     fig, ax = plt.subplots(figsize=(6, 5))
@@ -140,8 +185,8 @@ def panel_g():
 # (all_mu_component_diagnostics.tsv) whose original producer pipeline is not present in this
 # repository. The functions below RE-DERIVE that decomposition in Python from the base h5ads
 # with an explicit, documented definition, so C/D/F are reproduced up to the definition of the
-# global mu-axis. mu (the dominant global response direction, per dataset) is taken as the
-# unit-normalized mean of the per-perturbation response vectors dx. For each perturbation:
+# global mu-axis. mu is the per-dataset control-mean expression vector (the global "total-RNA"
+# / library-scaling direction), unit-normalized. For each perturbation:
 #   frac_mu    = <dx, mu_hat>^2 / ||dx||^2                 (fraction of response norm along mu)
 #   pearson_full     = Pearson(dx, forward_pred(Sigma, dx, target))         (full covariance)
 #   pearson_residual = Pearson(dx_perp, forward_pred(Sigma, dx_perp, target)), dx_perp = dx - proj_mu(dx)
@@ -190,7 +235,7 @@ def compute_mu_axis(seed=SEED):
         if not dxs:
             continue
         dxs = np.asarray(dxs)
-        mu = dxs.mean(0)                                   # dominant global response direction
+        mu = control_mean                                 # control-mean (total-RNA) axis
         mu_hat = mu / (np.linalg.norm(mu) + 1e-12)
         for (p, g), dx in zip(perts, dxs):
             nrm2 = float(dx @ dx)

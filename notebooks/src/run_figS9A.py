@@ -74,6 +74,10 @@ DATASET_NAMES = [
 EXPRESSION_THRESHOLD = 1.0
 MIN_SAMPLES = 100
 N_NULL_REPS = 300
+# Reuse per-dataset outputs that already exist, so a run stopped by a wall-clock limit resumes
+# instead of recomputing finished datasets. Set False (or CIPHER_FIGS9A_RESUME=0) to force a
+# full recompute.
+RESUME_COMPLETED = bool(int(os.environ.get("CIPHER_FIGS9A_RESUME", "1")))
 N_REPS_PER_PERT = 30
 SEED = 0
 RUN_SIGMA_METHODS = ["true"]
@@ -885,6 +889,19 @@ def run_clt_isotropic_null():
 
     for i, data_path in enumerate(data_paths):
         try:
+            # Resume guard: each dataset writes its own summary JSON + null-array npz, so a run
+            # stopped by a wall-clock limit can be relaunched and will reuse the datasets it
+            # already finished. The cached summary is loaded (not just skipped) so the combined
+            # JSON/CSV written below still covers every dataset.
+            _ds = os.path.basename(data_path).replace(".h5ad", "")
+            _cached = os.path.join(run_outdir, f"{_ds}__sampling_noise_summary.json")
+            _cached_npz = os.path.join(run_outdir, f"{_ds}__sampling_noise_null_arrays.npz")
+            if RESUME_COMPLETED and os.path.exists(_cached) and os.path.exists(_cached_npz):
+                with open(_cached) as _f:
+                    all_summaries.append(json.load(_f))
+                print(f"[resume] {_ds}: reusing cached sampling-noise summary")
+                continue
+
             summary = run_one_dataset(
                 data_path=data_path,
                 outdir=run_outdir,
