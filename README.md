@@ -289,21 +289,40 @@ Will be uploaded to zenodo.
 
 ## Reproducing paper figures
 
-Notebooks to reproduce each figure of the paper live in the `notebooks/`
-directory and run against the (still-included) `src/` implementation used for
-the publication. All notebooks work with the supplied conda environment.
+Reproduction notebooks live under `notebooks/`, split into **`notebooks/main/`** (main
+figures 3–7) and **`notebooks/suppl/`** (supplements). They run against the installed
+`cipher` package (no legacy `src/`; shared notebook-only helpers live in `notebooks/src/`
+and are added to `sys.path`). Each notebook reads the dataset directory from the
+`CIPHER_DATA_DIR` environment variable, writes to `SUPPL_OUT`, and expects expression on
+raw counts (`NORM="raw"`, the package default); set those in your sbatch script. Panels
+are one-indexed to the published figures.
 
-| Notebook | Figures |
+### Main figures — `notebooks/main/`
+
+| Notebook | Figure panels |
 | --- | --- |
-| `notebooks/LR_fig2.ipynb` | Fig. 2 (All) |
-| `notebooks/LR_fig3_R2_hist.ipynb` | Fig. 3 (A–M) |
-| `notebooks/LF_double_pert_R2_and_inference.ipynb` | Fig. 3 (N, O, P); Fig. 4 H |
-| `notebooks/LR_fig3_cross_dataset.ipynb` | Fig. 3 (Q, R) |
-| `notebooks/LR_fig4.ipynb` | Fig. 4 (A–G) |
-| `notebooks/LR_fig5_TRADE_and_EGENES.ipynb` | Fig. 5 |
+| `fig3_forward.ipynb` | Fig. 3 C, D, E (per-dataset real-Σ vs mean-field accuracy) + G, H, I (held-out prediction / estimator convergence). |
+| `fig3_benchmarks.ipynb` | Fig. 3 J–N — CIPHER vs GEARS / scGPT / scLAMBDA / scouter / GenePert / linear-mean, scored in raw space (Pearson, cosine, L2, MSE, Spearman) plus Systema centroid accuracy. Reads the benchmark result pkls (see `benchmarks/`) via a small cached CSV. |
+| `fig4_cross_dataset.ipynb` | Fig. 4 B, C (cross-dataset covariance transfer) + E, F (CellxGene-atlas transfer). |
+| `fig5_inverse.ipynb` | Fig. 5 — inverse ROC/PR, CRISPRi/a perturbation identification (`sigma_count`), sci-Plex drug identification (`within_cov`). |
+| `fig6_effective_dims.ipynb` | Fig. 6 A, B (participation ratio), C–F (μ-axis reconstruction), G (PR vs ΔR²), H, I (effective response dimension). |
+| `fig7_validation.ipynb` | Fig. 7 B, F (naive-vs-resistant UMAPs), C (melanoma), G (KRAS resistance), K, L (LARRY prospective fate). Wet-lab panels (D, E, H–J) are not computable from the release data. |
+
+Schematic panels (Fig. 3 A/B/F, Fig. 4 A, Fig. 5 A/B, and the Fig. 6 diagrams) are not
+reproduced.
+
+### Supplementary figures — `notebooks/suppl/`
+
+See [`notebooks/suppl/README.md`](notebooks/suppl/README.md) for the full list of
+supplementary-figure notebooks, the panels each reproduces, and the extra inputs they need.
+
+> The published figure numbering differs from the pre-publication draft (e.g. the
+> cross-dataset analysis was draft "Fig 3 Q/R" but is Figure 4 in the paper); the
+> notebooks use the published numbering.
 
 **Method benchmarks** comparing CIPHER against other approaches are in the
-`benchmarks/` folder.
+`benchmarks/` folder; `notebooks/main/fig3_benchmarks.ipynb` turns their outputs into the
+Fig. 3 J–N panels.
 
 ## Preprint
 
