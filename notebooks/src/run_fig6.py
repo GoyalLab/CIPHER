@@ -3,9 +3,14 @@
 Engine for the computable Fig 6 panels: A (participation-ratio / effective-dimension distributions of
 the perturbation response across control-covariance principal components, per dataset), B (clustered
 heatmaps of the response fraction along each PC), and G (mean participation ratio vs mean forward ΔR2
-per dataset). Panels H/I (effective number of driving genes) reuse the suppl engine run_figS15; panels
-J/K/L (scDesign3 raw-vs-library-size mixing / accuracy) reuse the scDesign3 analysis. Panels C/D/E/F
-(mu-axis vs orthogonal decomposition and its gene-set enrichment) are a distinct analysis.
+per dataset), C/D (mu-axis vs orthogonal response decomposition on the control-mean axis), E (gene-set
+enrichment of the mu-axis-dominated targets), F (standardized growth-scaling factor c), I (effective
+number of genes contributing to the true perturbed gene's response, read from the figS15 sweep table)
+and K (scDesign3 mLISI, raw vs library-size normalisation).
+
+Panels H, J and L are not reproduced: H needs a gene-by-gene contribution entropy that no saved output
+carries, J is a schematic, and L's per-perturbation raw-vs-library-size Pearson values were never
+persisted by the scDesign3 (R) pipeline.
 
 Participation ratio of a response dx: project dx onto the control-covariance eigenbasis V (Sigma =
 V diag(lam) V^T), take fractions f_i = z_i^2 / sum_j z_j^2 with z = V^T dx, and PR = (sum f)^2 / sum f^2
@@ -44,6 +49,14 @@ N_PC_HEATMAP = 10                       # top PCs shown in the B heatmaps
 # once and reloaded afterwards; iterating on panel G then costs seconds instead of an hour.
 # Delete OUTDIR/pr_cache (or set False) to force a recompute.
 COMPUTE_CACHE = True
+# Panel I reads the per-perturbation effective-gene-count table produced by the figS15 sweep
+# (already on disk; no recompute). Panel K reads the scDesign3 mLISI medians, which come from an
+# R pipeline that is not part of this repo -- the published values are carried here so the panel
+# renders without it. Panels H and L are not reproduced: H needs a gene-by-gene contribution
+# entropy that no saved output carries, and L's per-perturbation raw-vs-library-size Pearson
+# values were never persisted.
+NEFF_TABLE = None          # defaults to <OUTDIR>/../figS15/tables/.../observed_vs_predicted_neff_r2_ge_0p30.tsv
+MLISI_MEDIANS = {"raw counts": 1.642336, "library size": 1.000000}
 # Datasets shown in published panel G (Replogle22 a/b, Nadig25 a/b, Norman19, Frangieh21,
 # Tian21 a/b, Tian19 a/b). Empty set => fit every available dataset.
 PANEL_G_DATASETS = {
@@ -150,6 +163,56 @@ def panel_ab():
         ax[1, j].set(xlabel="perturbations", ylabel="principal components", title=f"B   {d}")
         fig.colorbar(im, ax=ax[1, j], fraction=0.03)
     fig.tight_layout(); fig.savefig(os.path.join(OUTDIR, "fig6_panels_AB.svg")); plt.show()
+
+
+def _neff_table_path():
+    if NEFF_TABLE:
+        return NEFF_TABLE
+    return os.path.join(os.path.dirname(OUTDIR.rstrip("/")), "figS15", "tables",
+                        "observed_vs_cipher_neff_r2_0p30_to_0p90",
+                        "observed_vs_predicted_neff_r2_ge_0p30.tsv")
+
+
+def panel_i():
+    """I -- effective number of genes contributing to the true perturbed gene's response.
+
+    Shannon effective gene count per perturbation, pooled across datasets and shown as a
+    probability density on a log axis (the published panel spans ~10^1-10^3).
+    """
+    path = _neff_table_path()
+    if not os.path.exists(path):
+        print(f"panel_i skipped: no neff table at {os.path.basename(path)}")
+        return None
+    d = pd.read_csv(path, sep="\t")
+    v = pd.to_numeric(d["observed_neff"], errors="coerce").dropna()
+    v = v[v > 0]
+    print(f"I  n={len(v):,} perturbations | median n_eff={v.median():.1f} "
+          f"range {v.min():.1f}-{v.max():.1f}")
+    fig, ax = plt.subplots(figsize=(6, 4))
+    bins = np.logspace(np.log10(max(v.min(), 1.0)), np.log10(v.max()), 60)
+    ax.hist(v, bins=bins, density=True, color="0.45")
+    ax.set_xscale("log")
+    ax.set(xlabel="genes contributing to true perturbed gene's response",
+           ylabel="probability density", title="I")
+    fig.tight_layout(); fig.savefig(os.path.join(OUTDIR, "fig6_panelI.svg")); plt.show()
+    return v
+
+
+def panel_k():
+    """K -- median mLISI on the 2D UMAP (k=50) for synthetic data from raw vs library-size counts.
+
+    Values come from the scDesign3 generation pipeline (R); the maximum attainable mLISI is 2.
+    """
+    labels = list(MLISI_MEDIANS)
+    vals = [MLISI_MEDIANS[k] for k in labels]
+    print("K  mLISI medians: " + ", ".join(f"{k}={v:.3f}" for k, v in MLISI_MEDIANS.items()))
+    fig, ax = plt.subplots(figsize=(6, 3))
+    ax.barh(labels, vals, color="0.45")
+    ax.axvline(2.0, ls="--", color="0.3", lw=1)
+    ax.text(2.0, -0.45, "max=2", ha="center", va="bottom", fontsize=9)
+    ax.set(xlim=(1.0, 2.05), xlabel="method mLISI on 2D UMAP, k=50", title="K")
+    fig.tight_layout(); fig.savefig(os.path.join(OUTDIR, "fig6_panelK.svg")); plt.show()
+    return MLISI_MEDIANS
 
 
 def panel_g():

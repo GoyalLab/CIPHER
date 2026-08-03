@@ -284,8 +284,49 @@ Run `cipher --version` or `cipher <command> --help` for all options.
 
 ## Data / source datasets
 
-**Source data (Google Drive):**
-Will be uploaded to zenodo.
+All data needed to run the notebooks is public. Set a destination and fetch it with one
+command:
+
+```bash
+export CIPHER_DATA_DIR=/path/to/cipher_data
+python resources/download_data.py            # 45 files, ~82 GB
+```
+
+On a cluster, run it as a batch job instead of on a login node:
+
+```bash
+sbatch --export=ALL,CIPHER_DATA_DIR=/path/to/cipher_data resources/download_data.sbatch
+```
+
+[`download_data.py`](resources/download_data.py) is driven by
+[`resources/zenodo_manifest.csv`](resources/zenodo_manifest.csv), which records every file's
+md5, size and destination path. It fetches three groups:
+
+| group | source | files | size |
+|---|---|---|---|
+| main | Zenodo [10.5281/zenodo.21729034](https://doi.org/10.5281/zenodo.21729034) | 22 | 47.9 GB |
+| supplement | Zenodo [10.5281/zenodo.21728754](https://doi.org/10.5281/zenodo.21728754) | 12 | 10.3 GB |
+| already-public | scPerturb (Zenodo `7041849`, `13350497`) and GEO `GSE264667` | 11 | 23.5 GB |
+
+Datasets that already have a public home are **not** re-hosted; they are fetched from it. Every
+file is md5-verified on arrival, interrupted transfers resume, and files already present and
+correct are skipped — so re-running is cheap and a failed run just needs re-running. Useful
+flags:
+
+```bash
+python resources/download_data.py --check            # verify what is on disk, download nothing
+python resources/download_data.py --record suppl     # one group only
+python resources/download_data.py --only Marson2025  # substring match
+python resources/download_data.py --dry-run          # show the plan, no network
+```
+
+### Precomputed caches (not downloaded)
+
+About 40 GB of covariance/forward caches under `$CIPHER_DATA_DIR/suppl/precomputed_*` are
+**not** deposited, because they rebuild from the datasets above. Seven notebooks read them
+(`fig3_atlas`, `fig4_cross_dataset` E/F, `figS7`, `figS9A`, `figS9B`, `figS16`, `figS19`) and
+will fail without them. `download_data.py` prints the exact regeneration commands when it
+finishes; they are CPU-only but heavy, so run them as batch jobs.
 
 ## Reproducing paper figures
 
@@ -296,6 +337,11 @@ and are added to `sys.path`). Each notebook reads the dataset directory from the
 `CIPHER_DATA_DIR` environment variable, writes to `SUPPL_OUT`, and expects expression on
 raw counts (`NORM="raw"`, the package default); set those in your sbatch script. Panels
 are one-indexed to the published figures.
+
+Before running anything, populate `$CIPHER_DATA_DIR` (see [Data / source
+datasets](#data--source-datasets)) and confirm it with
+`python resources/download_data.py --check`. Notebooks that additionally need a regenerated
+precompute are marked in the supplementary table.
 
 ### Main figures — `notebooks/main/`
 

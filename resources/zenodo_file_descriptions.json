@@ -1,0 +1,172 @@
+{
+  "Human_genetic_interactions_collapsed.csv": {
+    "description": "18,319 rows x 9 columns; columns: Experimental System, Experimental System Type, Throughput ...",
+    "path": "suppl/Human_genetic_interactions_collapsed.csv",
+    "record": "suppl"
+  },
+  "Human_protein_protein_interactions_collapsed.csv": {
+    "description": "973,491 rows x 9 columns; columns: Experimental System, Experimental System Type, Throughput ...",
+    "path": "suppl/Human_protein_protein_interactions_collapsed.csv",
+    "record": "suppl"
+  },
+  "Marson2025_D1_Rest_filtered.h5ad": {
+    "description": "335,298 cells x 18,130 genes; 999 perturbations plus control; control is obs['perturbation'] == 'control' (10,000 cells); csr_matrix, int16",
+    "path": "Marson2025_D1_Rest_filtered.h5ad",
+    "record": "main"
+  },
+  "Marson2025_D1_Stim48hr_filtered.h5ad": {
+    "description": "270,659 cells x 18,130 genes; 999 perturbations plus control; control is obs['perturbation'] == 'control' (10,000 cells); csr_matrix, int16",
+    "path": "Marson2025_D1_Stim48hr_filtered.h5ad",
+    "record": "main"
+  },
+  "Marson2025_D1_Stim8hr_filtered.h5ad": {
+    "description": "265,455 cells x 18,130 genes; 999 perturbations plus control; control is obs['perturbation'] == 'control' (10,000 cells); csr_matrix, int16",
+    "path": "Marson2025_D1_Stim8hr_filtered.h5ad",
+    "record": "main"
+  },
+  "Marson2025_D2_Rest_filtered.h5ad": {
+    "description": "479,555 cells x 18,130 genes; 999 perturbations plus control; control is obs['perturbation'] == 'control' (10,000 cells); csr_matrix, int16",
+    "path": "Marson2025_D2_Rest_filtered.h5ad",
+    "record": "main"
+  },
+  "Marson2025_D2_Stim48hr_filtered.h5ad": {
+    "description": "473,318 cells x 18,130 genes; 999 perturbations plus control; control is obs['perturbation'] == 'control' (10,000 cells); csr_matrix, int16",
+    "path": "Marson2025_D2_Stim48hr_filtered.h5ad",
+    "record": "main"
+  },
+  "Marson2025_D2_Stim8hr_filtered.h5ad": {
+    "description": "467,697 cells x 18,130 genes; 999 perturbations plus control; control is obs['perturbation'] == 'control' (10,000 cells); csr_matrix, int16",
+    "path": "Marson2025_D2_Stim8hr_filtered.h5ad",
+    "record": "main"
+  },
+  "Marson2025_D3_Rest_filtered.h5ad": {
+    "description": "423,747 cells x 18,130 genes; 999 perturbations plus control; control is obs['perturbation'] == 'control' (10,000 cells); csr_matrix, int16",
+    "path": "Marson2025_D3_Rest_filtered.h5ad",
+    "record": "main"
+  },
+  "Marson2025_D3_Stim48hr_filtered.h5ad": {
+    "description": "403,100 cells x 18,130 genes; 999 perturbations plus control; control is obs['perturbation'] == 'control' (10,000 cells); csr_matrix, int16",
+    "path": "Marson2025_D3_Stim48hr_filtered.h5ad",
+    "record": "main"
+  },
+  "Marson2025_D3_Stim8hr_filtered.h5ad": {
+    "description": "353,408 cells x 18,130 genes; 999 perturbations plus control; control is obs['perturbation'] == 'control' (10,000 cells); csr_matrix, int16",
+    "path": "Marson2025_D3_Stim8hr_filtered.h5ad",
+    "record": "main"
+  },
+  "Marson2025_D4_Rest_filtered.h5ad": {
+    "description": "275,022 cells x 18,130 genes; 999 perturbations plus control; control is obs['perturbation'] == 'control' (10,000 cells); csr_matrix, int16",
+    "path": "Marson2025_D4_Rest_filtered.h5ad",
+    "record": "main"
+  },
+  "Marson2025_D4_Stim48hr_filtered.h5ad": {
+    "description": "293,102 cells x 18,130 genes; 999 perturbations plus control; control is obs['perturbation'] == 'control' (10,000 cells); csr_matrix, int16",
+    "path": "Marson2025_D4_Stim48hr_filtered.h5ad",
+    "record": "main"
+  },
+  "Marson2025_D4_Stim8hr_filtered.h5ad": {
+    "description": "241,035 cells x 18,130 genes; 999 perturbations plus control; control is obs['perturbation'] == 'control' (10,000 cells); csr_matrix, int16",
+    "path": "Marson2025_D4_Stim8hr_filtered.h5ad",
+    "record": "main"
+  },
+  "ReplogleWeissman2022_K562_gwps_filtered.h5ad": {
+    "description": "385,848 cells x 8,248 genes; 999 perturbations plus control; control is obs['perturbation'] == 'control' (10,000 cells); csr_matrix, int16",
+    "path": "ReplogleWeissman2022_K562_gwps_filtered.h5ad",
+    "record": "main"
+  },
+  "XAtlas2025_HCT116_filtered.h5ad": {
+    "description": "377,537 cells x 38,606 genes; 999 perturbations plus control; control is obs['perturbation'] == 'control' (10,000 cells); csr_matrix, int16",
+    "path": "XAtlas2025_HCT116_filtered.h5ad",
+    "record": "main"
+  },
+  "XAtlas2025_HEK293T_filtered.h5ad": {
+    "description": "504,256 cells x 38,606 genes; 999 perturbations plus control; control is obs['perturbation'] == 'control' (10,000 cells); csr_matrix, int16",
+    "path": "XAtlas2025_HEK293T_filtered.h5ad",
+    "record": "main"
+  },
+  "Xtot_four_conditions_balanced.h5ad": {
+    "description": "120 cells x 32,738 genes; 4 Condition levels: Naive, Resistant, Tolerant, Primary; control is obs['Condition'] == 'Naive' (30 cells); array, int64",
+    "path": "suppl/Xtot_four_conditions_balanced.h5ad",
+    "record": "suppl"
+  },
+  "Xtot_naive_resistant_melanoma_unbalanced.h5ad": {
+    "description": "16,277 cells x 32,738 genes; 2 Condition levels: Naive, Resistant; control is obs['Condition'] == 'Naive' (8,838 cells); array, int64",
+    "path": "suppl/GSE233766/Xtot_naive_resistant_melanoma_unbalanced.h5ad",
+    "record": "suppl"
+  },
+  "Xtot_naive_resistant_unbalanced_resistant_BC50_clone_size_gt1.h5ad": {
+    "description": "12,451 cells x 32,738 genes; 2 Condition levels: Naive, Resistant; control is obs['Condition'] == 'Naive' (9,268 cells); array, int64",
+    "path": "suppl/Xtot_naive_resistant_unbalanced_resistant_BC50_clone_size_gt1.h5ad",
+    "record": "suppl"
+  },
+  "akana_etal_2026_crispra_perturbseq.h5ad": {
+    "description": "20,207 cells x 36,591 genes; 61 perturbations plus control; control is obs['perturbation'] == 'control' (2,660 cells); csr_matrix, float64",
+    "path": "akana_etal_2026_crispra_perturbseq.h5ad",
+    "record": "main"
+  },
+  "kaden25_fibroblast_ctrl_10k_min100_greedy_4gb.h5ad": {
+    "description": "185,700 cells x 30,395 genes; 1,757 perturbations plus control; control is obs['perturbation'] == 'control' (10,000 cells); csr_matrix, float32",
+    "path": "kaden25_fibroblast_ctrl_10k_min100_greedy_4gb.h5ad",
+    "record": "main"
+  },
+  "kaden25_rpe1_ctrl_10k_min100_greedy_4gb.h5ad": {
+    "description": "118,900 cells x 31,419 genes; 1,089 perturbations plus control; control is obs['perturbation'] == 'control' (10,000 cells); csr_matrix, float32",
+    "path": "kaden25_rpe1_ctrl_10k_min100_greedy_4gb.h5ad",
+    "record": "main"
+  },
+  "merfish_perturbed_cells_astrocytes.csv": {
+    "description": "14,926 rows x 277 columns; columns: PPP5C, LAPTM4A, CA12 ...",
+    "path": "merfish_perturbed_cells_astrocytes.csv",
+    "record": "main"
+  },
+  "pancreatic_naive_vs_resistant.h5ad": {
+    "description": "9,629 cells x 17,685 genes; 2 Condition levels: Naive, Resistant; control is obs['Condition'] == 'Naive' (7,328 cells); csr_matrix, int64",
+    "path": "suppl/pancreatic_naive_vs_resistant.h5ad",
+    "record": "suppl"
+  },
+  "perturbation_design_astrocytes.csv": {
+    "description": "129 rows x 14927 columns; columns: , Cell_1, Cell_2 ...",
+    "path": "perturbation_design_astrocytes.csv",
+    "record": "main"
+  },
+  "proper_filtered.h5ad": {
+    "description": "52,030 cells x 18,099 genes; 192 perturbations plus control; control is obs['perturbation'] == 'negative' (2,280 cells); csr_matrix, float32",
+    "path": "proper_filtered.h5ad",
+    "record": "main"
+  },
+  "schemidt_etal_2022_crispra_perturbseq.h5ad": {
+    "description": "57,835 cells x 24,709 genes; 69 perturbations plus control; control is obs['perturbation'] == 'control' (3,724 cells); csr_matrix, float64",
+    "path": "schemidt_etal_2022_crispra_perturbseq.h5ad",
+    "record": "main"
+  },
+  "stateFate_inVitro_clone_matrix.mtx.gz": {
+    "description": "Matrix Market sparse matrix, 130,887 x 5,864, 49,302 non-zeros (0.01% dense)",
+    "path": "suppl/stateFate_inVitro_clone_matrix.mtx.gz",
+    "record": "suppl"
+  },
+  "stateFate_inVitro_gene_names.txt.gz": {
+    "description": "25,289 lines; first line: '0610006L08Rik'",
+    "path": "suppl/stateFate_inVitro_gene_names.txt.gz",
+    "record": "suppl"
+  },
+  "stateFate_inVitro_metadata.txt.gz": {
+    "description": "130,888 lines; first line: 'Library\\tCell barcode\\tTime point\\tStarting population\\tCell type annotation\\tWell\\tSPRING-x\\tSPR'",
+    "path": "suppl/stateFate_inVitro_metadata.txt.gz",
+    "record": "suppl"
+  },
+  "stateFate_inVitro_neutrophil_monocyte_trajectory.txt.gz": {
+    "description": "96,374 lines; first line: 'Cell index'",
+    "path": "suppl/stateFate_inVitro_neutrophil_monocyte_trajectory.txt.gz",
+    "record": "suppl"
+  },
+  "stateFate_inVitro_neutrophil_pseudotime.txt.gz": {
+    "description": "61,311 lines; first line: 'Cell index\\tpseudotime'",
+    "path": "suppl/stateFate_inVitro_neutrophil_pseudotime.txt.gz",
+    "record": "suppl"
+  },
+  "stateFate_inVitro_normed_counts.mtx.gz": {
+    "description": "Matrix Market sparse matrix, 130,887 x 25,289, 176,867,560 non-zeros (5.34% dense)",
+    "path": "suppl/stateFate_inVitro_normed_counts.mtx.gz",
+    "record": "suppl"
+  }
+}

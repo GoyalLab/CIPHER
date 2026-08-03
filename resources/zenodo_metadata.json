@@ -1,0 +1,52 @@
+{
+  "_readme": [
+    "Metadata for the two CIPHER Zenodo records, consumed by zenodo_upload.py.",
+    "Keys beginning with '_' are stripped before the payload is sent."
+  ],
+
+  "shared": {
+    "upload_type": "dataset",
+    "access_right": "open",
+    "license": "cc-by-4.0",
+    "version": "v0.1.0",
+    "language": "eng",
+    "creators": [
+      {"name": "Kuznets-Speck, Benjamin", "affiliation": "Department of Cell and Developmental Biology, Feinberg School of Medicine, Northwestern University, Chicago IL, USA", "orcid": "0000-0001-9859-8749"},
+      {"name": "Kumari, Nitu", "affiliation": "Department of Cell and Developmental Biology, Feinberg School of Medicine, Northwestern University, Chicago IL, USA", "orcid": "0009-0004-7004-0400"},
+      {"name": "Senthilkumar, Irish", "affiliation": "Department of Cell and Developmental Biology, Feinberg School of Medicine, Northwestern University, Chicago IL, USA", "orcid": "0000-0002-7194-3685"},
+      {"name": "Jung, Jaekwon", "affiliation": "Department of Cell and Developmental Biology, Feinberg School of Medicine, Northwestern University, Chicago IL, USA", "orcid": "0009-0002-8931-1595"},
+      {"name": "Lopez Rios, Hector Manuel", "affiliation": "NSF-Simons National Institute for Theory and Mathematics in Biology, Chicago IL, USA", "orcid": "0000-0002-4276-7432"},
+      {"name": "Schwartz, Leon", "affiliation": "Department of Cell and Developmental Biology, Feinberg School of Medicine, Northwestern University, Chicago IL, USA", "orcid": "0000-0001-8621-4146"},
+      {"name": "Sun, Hanxiao", "affiliation": "Department of Cell and Developmental Biology, Feinberg School of Medicine, Northwestern University, Chicago IL, USA", "orcid": ""},
+      {"name": "Anisetti, Vidyesh Rao", "affiliation": "NSF-Simons National Institute for Theory and Mathematics in Biology, Chicago IL, USA", "orcid": "0000-0002-2769-4773"},
+      {"name": "Wang, Changhu", "affiliation": "Biostatistics Program, Fred Hutchinson Cancer Center, Seattle WA, USA", "orcid": ""},
+      {"name": "Wang, Qingyang", "affiliation": "Biostatistics Program, Fred Hutchinson Cancer Center, Seattle WA, USA", "orcid": ""},
+      {"name": "Pholraksa, Pornchanan", "affiliation": "Department of Cell and Developmental Biology, Feinberg School of Medicine, Northwestern University, Chicago IL, USA", "orcid": ""},
+      {"name": "Grody, Emanuelle I.", "affiliation": "Department of Cell and Developmental Biology, Feinberg School of Medicine, Northwestern University, Chicago IL, USA", "orcid": ""},
+      {"name": "Melzer, Madeline E.", "affiliation": "Department of Cell and Developmental Biology, Feinberg School of Medicine, Northwestern University, Chicago IL, USA", "orcid": "0009-0000-2607-6490"},
+      {"name": "Haley, Benjamin", "affiliation": "Department of Ophthalmology, Universite de Montreal, Canada", "orcid": "0000-0002-0074-0020"},
+      {"name": "Prashnani, Ekta", "affiliation": "NVIDIA, Santa Clara CA, USA", "orcid": "0009-0000-5086-2416"},
+      {"name": "Li, Jingyi Jessica", "affiliation": "Biostatistics Program, Fred Hutchinson Cancer Center, Seattle WA, USA", "orcid": "0000-0002-9288-5648"},
+      {"name": "Goyal, Akshit", "affiliation": "International Centre for Theoretical Sciences, Tata Institute of Fundamental Research, Bengaluru, India", "orcid": ""},
+      {"name": "Vaikuntanathan, Suriyanarayanan", "affiliation": "Department of Chemistry, University of Chicago, Chicago IL, USA", "orcid": ""},
+      {"name": "Goyal, Yogesh", "affiliation": "Department of Cell and Developmental Biology, Feinberg School of Medicine, Northwestern University, Chicago IL, USA", "orcid": "0000-0003-3502-6465"}
+    ],
+    "related_identifiers": [
+      {"identifier": "10.1101/2025.06.27.661814", "relation": "isSupplementTo", "resource_type": "publication-preprint"},
+      {"identifier": "10.5281/zenodo.7041849", "relation": "references", "resource_type": "dataset"},
+      {"identifier": "{SIBLING_DOI}", "relation": "isPartOf", "resource_type": "dataset"}
+    ]
+  },
+
+  "main": {
+    "title": "CIPHER: curated single-cell perturbation datasets — main",
+    "description": "<p>Curated base Perturb-seq objects underlying the CIPHER analyses (Kuznets-Speck et al., <em>Fluctuation structure predicts genome-wide perturbation outcomes</em>). This record holds the lab-generated and re-curated datasets that have no other public home; the already-public datasets CIPHER uses (Frangieh, Norman, Replogle essential/rpe1, Tian, sci-Plex 3, GSE264667) are <strong>not</strong> re-hosted here and are fetched from their original repositories by <code>resources/download_resources.py</code>.</p><p><strong>Format.</strong> Each <code>.h5ad</code> is an AnnData object readable with <code>cipher.load_dataset(path)</code>: <code>var_names</code> are gene symbols, <code>obs['perturbation']</code> holds the perturbation label with <code>'control'</code> marking control cells (<code>proper_filtered.h5ad</code> uses <code>'negative'</code>), and <code>X</code> is raw counts. The two astrocyte CSVs are MERFISH measurements plus their perturbation design table.</p><p><strong>Regenerable caches are deliberately excluded.</strong> The covariance/forward precomputes the supplementary notebooks read are rebuilt from these files with the generators in <code>notebooks/src/</code>; see the repository README.</p>{FILE_TABLE}",
+    "keywords": ["Perturb-seq", "single-cell", "CRISPR", "perturbation", "covariance", "transcriptomics", "gene regulation"]
+  },
+
+  "suppl": {
+    "title": "CIPHER: curated single-cell perturbation datasets — supplement",
+    "description": "<p>Supplementary inputs for the CIPHER supplementary analyses (Kuznets-Speck et al., <em>Fluctuation structure predicts genome-wide perturbation outcomes</em>), companion to the main record. Three groups of primary inputs with no other public home:</p><ul><li><strong>Drug-resistance objects</strong> — analysis-ready AnnData for the naive/resistant melanoma and pancreatic comparisons, labelled by <code>obs['Condition']</code>. GEO publishes only the raw <code>GSE233766_RAW.tar</code>; these processed objects come from the authors.</li><li><strong>LARRY lineage tracing</strong> — the <code>stateFate_inVitro_*</code> normalized count matrix, clone matrix, gene names, cell metadata and trajectory/pseudotime tables.</li><li><strong>Interaction tables</strong> — collapsed human genetic-interaction and protein-protein-interaction edge lists used to score CIPHER couplings.</li></ul><p><strong>Regenerable caches are deliberately excluded</strong> — the <code>precomputed_*</code> covariance/forward caches and response-breadth tables are rebuilt from the base objects with the generators in <code>notebooks/src/</code>.</p>{FILE_TABLE}",
+    "keywords": ["Perturb-seq", "single-cell", "drug resistance", "lineage tracing", "LARRY", "protein-protein interaction", "genetic interaction"]
+  }
+}
